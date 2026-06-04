@@ -6,11 +6,12 @@ const startButton = document.querySelector('.start-button');
 const speedSelect = document.querySelector('.speed-select');
 const speedValue = document.querySelector('.speed-value');
 const scoreValue = document.querySelector('.score-value');
+const bestScoreValue = document.querySelector('.best-score-value');
 const gameMessage = document.querySelector('.game-message');
 let isGameRunning = false;
 let isGameOver = false;
 let selectedSpeedLevel = Number(speedSelect.value);
-const keys = new Set();
+const bestScoreStorageKey = 'bounceBuddyBestScore';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07111f);
@@ -180,6 +181,21 @@ const impactLight = new THREE.PointLight(0x75d7ff, 0, 6);
 impactLight.position.set(0, 0.2, 0);
 scene.add(impactLight);
 
+const targetMarker = new THREE.Mesh(
+  new THREE.RingGeometry(0.72, 0.86, 96),
+  new THREE.MeshBasicMaterial({
+    color: 0x91f7ff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+);
+targetMarker.rotation.x = -Math.PI / 2;
+targetMarker.visible = false;
+scene.add(targetMarker);
+
 const impactEffects = [];
 const impactMaterial = new THREE.MeshBasicMaterial({
   color: 0x66ddff,
@@ -286,10 +302,9 @@ let previousHop = 0;
 let ballX = 0;
 let targetBallX = 0;
 let score = 0;
+let bestScore = readBestScore();
 const lanePositions = [-2.4, 0, 2.4];
 const platformHalfWidth = 1.2;
-const lateralLimit = 3.1;
-const lateralSpeed = 6.2;
 const platformLayout = new Map([[0, 0]]);
 
 function speedLevelToHopRate(level) {
@@ -318,6 +333,50 @@ function setScore(value) {
   scoreValue.textContent = String(score);
 }
 
+function readBestScore() {
+  try {
+    const storedScore = Number(localStorage.getItem(bestScoreStorageKey));
+    return Number.isFinite(storedScore) ? Math.max(0, storedScore) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function setBestScore(value) {
+  bestScore = value;
+  bestScoreValue.textContent = String(bestScore);
+
+  try {
+    localStorage.setItem(bestScoreStorageKey, String(bestScore));
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+}
+
+function getCurrentLaneIndex() {
+  return lanePositions.reduce((closestIndex, laneX, index) => {
+    const closestDistance = Math.abs(lanePositions[closestIndex] - targetBallX);
+    const laneDistance = Math.abs(laneX - targetBallX);
+
+    return laneDistance < closestDistance ? index : closestIndex;
+  }, 1);
+}
+
+function shiftTargetLane(direction) {
+  if (!isGameRunning || isGameOver) {
+    return;
+  }
+
+  const currentLane = getCurrentLaneIndex();
+  const nextLane = THREE.MathUtils.clamp(
+    currentLane + direction,
+    0,
+    lanePositions.length - 1
+  );
+
+  targetBallX = lanePositions[nextLane];
+}
+
 function resetGame() {
   isGameRunning = true;
   isGameOver = false;
@@ -328,7 +387,7 @@ function resetGame() {
   platformLayout.clear();
   platformLayout.set(0, 0);
   setScore(0);
-  gameMessage.textContent = '用 A/D 或方向键调整位置，落在发光平台上';
+  gameMessage.textContent = '按 A/D 或方向键选择下一次落点';
   document.body.classList.add('is-playing');
   document.body.classList.remove('is-game-over');
   impactEffects.splice(0).forEach((effect) => {
@@ -348,9 +407,16 @@ function endGame() {
   isGameOver = true;
   document.body.classList.add('is-game-over');
   startButton.textContent = '再来一次';
-  gameMessage.textContent = `游戏结束，最终得分 ${score}`;
+
+  if (score > bestScore) {
+    setBestScore(score);
+    gameMessage.textContent = `新纪录！最终得分 ${score}`;
+  } else {
+    gameMessage.textContent = `游戏结束，最终得分 ${score}`;
+  }
 }
 
+bestScoreValue.textContent = String(bestScore);
 setSpeedLevel(selectedSpeedLevel);
 
 speedSelect.addEventListener('change', () => {
@@ -362,13 +428,17 @@ startButton.addEventListener('click', () => {
 });
 
 window.addEventListener('keydown', (event) => {
-  if (['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD'].includes(event.code)) {
-    keys.add(event.code);
+  if (event.repeat) {
+    return;
   }
-});
 
-window.addEventListener('keyup', (event) => {
-  keys.delete(event.code);
+  if (event.code === 'ArrowLeft' || event.code === 'KeyA') {
+    shiftTargetLane(-1);
+  }
+
+  if (event.code === 'ArrowRight' || event.code === 'KeyD') {
+    shiftTargetLane(1);
+  }
 });
 
 function animate() {
@@ -377,16 +447,6 @@ function animate() {
 
   if (isGameRunning) {
     hopProgress += hopRate * delta;
-
-    const moveLeft = keys.has('ArrowLeft') || keys.has('KeyA');
-    const moveRight = keys.has('ArrowRight') || keys.has('KeyD');
-    const horizontalInput = Number(moveRight) - Number(moveLeft);
-
-    targetBallX = THREE.MathUtils.clamp(
-      targetBallX + horizontalInput * lateralSpeed * delta,
-      -lateralLimit,
-      lateralLimit
-    );
   }
 
   ballX = THREE.MathUtils.lerp(ballX, targetBallX, 0.2);
@@ -415,6 +475,17 @@ function animate() {
   starGround.position.z = groundCenterZ;
 
   const currentLanding = Math.floor(hopProgress);
+  const nextLandingIndex = currentLanding + 1;
+  const nextPadZ = nearZ - nextLandingIndex * landingGap;
+  const nextPlatformX = getPlatformX(nextLandingIndex);
+  const targetWillLand = Math.abs(targetBallX - nextPlatformX) <= platformHalfWidth;
+
+  targetMarker.visible = isGameRunning;
+  targetMarker.position.set(targetBallX, 0.13, nextPadZ);
+  targetMarker.material.opacity = isGameRunning ? 0.68 + bounce * 0.22 : 0;
+  targetMarker.material.color.setHex(targetWillLand ? 0x91f7ff : 0xff6fa3);
+  targetMarker.scale.setScalar(1 + bounce * 0.18);
+
   for (let i = 0; i < landingPads.length; i += 1) {
     const landingIndex = currentLanding + i;
     const padZ = nearZ - landingIndex * landingGap;

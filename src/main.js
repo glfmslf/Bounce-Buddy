@@ -246,6 +246,7 @@ const lanePositions = [-2.4, 0, 2.4];
 const platformHalfWidth = 0.86;
 const landingPads = [];
 const visibleLandingCount = 12;
+const maxPlatformsPerLanding = 2;
 const landingPadGeometry = new THREE.BoxGeometry(1.72, 0.16, 1.45);
 const landingPadMaterial = new THREE.MeshStandardMaterial({
   color: 0x123b6d,
@@ -397,13 +398,24 @@ function getNextColor(colorKey) {
 }
 
 function createLandingPlatforms(index) {
-  const shouldCreateWildcard = index > 1 && index % 4 === 0;
-  const wildcardLane = Math.floor(index / 4) % lanePositions.length;
+  if (index === 0) {
+    return [{ x: 0, type: 'normal', color: 'red', nextColor: null }];
+  }
 
-  return lanePositions.map((x, laneIndex) => {
+  const platformCount = Math.min(maxPlatformsPerLanding, 1 + Number(index % 3 !== 0));
+  const shouldCreateWildcard = index > 1 && index % 4 === 0;
+  const startLane = index % lanePositions.length;
+  const lanes = [];
+
+  for (let i = 0; i < platformCount; i += 1) {
+    lanes.push((startLane + i * 2) % lanePositions.length);
+  }
+
+  return lanes.map((laneIndex, platformIndex) => {
+    const x = lanePositions[laneIndex];
     const color = colorOrder[(index + laneIndex) % colorOrder.length];
 
-    if (shouldCreateWildcard && laneIndex === wildcardLane) {
+    if (shouldCreateWildcard && platformIndex === 0) {
       return {
         x,
         type: 'wildcard',
@@ -429,6 +441,24 @@ function getLandingPlatforms(index) {
   return platformLayout.get(index);
 }
 
+function ensureLandingHasValidPlatform(index, colorKey) {
+  const platforms = getLandingPlatforms(index);
+
+  if (platforms.some((platform) => platform.type === 'wildcard' || platform.color === colorKey)) {
+    return platforms;
+  }
+
+  const fallbackIndex = index % platforms.length;
+  platforms[fallbackIndex] = {
+    ...platforms[fallbackIndex],
+    type: 'normal',
+    color: colorKey,
+    nextColor: null,
+  };
+
+  return platforms;
+}
+
 function findPlatformAt(index, x) {
   return getLandingPlatforms(index).find(
     (platform) => Math.abs(x - platform.x) <= platformHalfWidth
@@ -436,7 +466,7 @@ function findPlatformAt(index, x) {
 }
 
 function findValidPlatformForColor(index, colorKey) {
-  return getLandingPlatforms(index).find(
+  return ensureLandingHasValidPlatform(index, colorKey).find(
     (platform) => platform.type === 'wildcard' || platform.color === colorKey
   );
 }
@@ -621,7 +651,7 @@ function animate() {
   const currentLanding = Math.floor(hopProgress);
   const nextLandingIndex = currentLanding + 1;
   const nextPadZ = nearZ - nextLandingIndex * landingGap;
-  const nextPlatforms = getLandingPlatforms(nextLandingIndex);
+  const nextPlatforms = ensureLandingHasValidPlatform(nextLandingIndex, currentBallColor);
   const nextPlatform = findPlatformAt(nextLandingIndex, targetBallX);
   const targetWillLand = isLandingValid(nextPlatform, targetBallX);
   window.__bounceBuddyDebug = {
@@ -649,14 +679,21 @@ function animate() {
     const platforms = getLandingPlatforms(landingIndex);
     const distanceFromBall = Math.abs(padZ - z);
 
-    for (let laneIndex = 0; laneIndex < platforms.length; laneIndex += 1) {
-      const platform = platforms[laneIndex];
-      const pad = landingPads[i * lanePositions.length + laneIndex];
+    for (let platformIndex = 0; platformIndex < lanePositions.length; platformIndex += 1) {
+      const platform = platforms[platformIndex];
+      const pad = landingPads[i * lanePositions.length + platformIndex];
+
+      if (!platform) {
+        pad.visible = false;
+        continue;
+      }
+
       const isCurrentTarget =
         landingIndex === currentLanding + 1 && Math.abs(targetBallX - platform.x) < 0.2;
       const targetScale = isCurrentTarget ? 1.12 : 1;
       const landingScale = distanceFromBall < 1.2 ? 1.05 : 1;
 
+      pad.visible = true;
       pad.position.set(platform.x, 0.08, padZ);
       pad.scale.setScalar(targetScale * landingScale);
       applyPlatformVisual(pad, platform, isCurrentTarget);
@@ -672,6 +709,7 @@ function animate() {
 
   if (isGameRunning && hop < previousHop) {
     const landingIndex = Math.floor(hopProgress);
+    ensureLandingHasValidPlatform(landingIndex, currentBallColor);
     const platform = findPlatformAt(landingIndex, ballX);
     const onPlatform = Boolean(platform);
     const landed = onPlatform && isColorValid(platform);

@@ -239,8 +239,11 @@ const impactMaterial = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
+const lanePositions = [-2.4, 0, 2.4];
+const platformHalfWidth = 0.86;
 const landingPads = [];
-const landingPadGeometry = new THREE.BoxGeometry(2.4, 0.16, 1.45);
+const visibleLandingCount = 12;
+const landingPadGeometry = new THREE.BoxGeometry(1.72, 0.16, 1.45);
 const landingPadMaterial = new THREE.MeshStandardMaterial({
   color: 0x123b6d,
   emissive: 0x29d7ff,
@@ -256,7 +259,7 @@ const landingPadEdgeMaterial = new THREE.LineBasicMaterial({
   opacity: 0.8,
 });
 
-for (let i = 0; i < 12; i += 1) {
+for (let i = 0; i < visibleLandingCount * lanePositions.length; i += 1) {
   const pad = new THREE.Group();
   const body = new THREE.Mesh(landingPadGeometry, landingPadMaterial.clone());
   const edges = new THREE.LineSegments(
@@ -361,10 +364,8 @@ let targetBallX = 0;
 let score = 0;
 let currentBallColor = 'red';
 let bestScore = readBestScore();
-const lanePositions = [-2.4, 0, 2.4];
-const platformHalfWidth = 1.2;
 const platformLayout = new Map([
-  [0, { x: 0, type: 'normal', color: 'red', nextColor: null }],
+  [0, createLandingPlatforms(0)],
 ]);
 
 function speedLevelToHopRate(level) {
@@ -383,35 +384,49 @@ function getNextColor(colorKey) {
   return colorOrder[(currentIndex + 1 + Math.floor(Math.random() * 2)) % colorOrder.length];
 }
 
-function createPlatformData(index) {
-  const previousPlatform = getPlatformData(index - 1);
-  const candidates = lanePositions.filter((x) => Math.abs(x - previousPlatform.x) <= 2.4);
-  const x = candidates[Math.floor(Math.random() * candidates.length)];
+function createLandingPlatforms(index) {
   const shouldCreateWildcard = index > 1 && index % 4 === 0;
+  const wildcardLane = Math.floor(index / 4) % lanePositions.length;
 
-  if (shouldCreateWildcard) {
+  return lanePositions.map((x, laneIndex) => {
+    const color = colorOrder[(index + laneIndex) % colorOrder.length];
+
+    if (shouldCreateWildcard && laneIndex === wildcardLane) {
+      return {
+        x,
+        type: 'wildcard',
+        color,
+        nextColor: getNextColor(color),
+      };
+    }
+
     return {
       x,
-      type: 'wildcard',
-      color: previousPlatform.color,
-      nextColor: getNextColor(previousPlatform.color),
+      type: 'normal',
+      color,
+      nextColor: null,
     };
-  }
-
-  return {
-    x,
-    type: 'normal',
-    color: previousPlatform.nextColor ?? previousPlatform.color,
-    nextColor: null,
-  };
+  });
 }
 
-function getPlatformData(index) {
+function getLandingPlatforms(index) {
   if (!platformLayout.has(index)) {
-    platformLayout.set(index, createPlatformData(index));
+    platformLayout.set(index, createLandingPlatforms(index));
   }
 
   return platformLayout.get(index);
+}
+
+function findPlatformAt(index, x) {
+  return getLandingPlatforms(index).find(
+    (platform) => Math.abs(x - platform.x) <= platformHalfWidth
+  );
+}
+
+function findValidPlatformForColor(index, colorKey) {
+  return getLandingPlatforms(index).find(
+    (platform) => platform.type === 'wildcard' || platform.color === colorKey
+  );
 }
 
 function setScore(value) {
@@ -480,7 +495,7 @@ function isColorValid(platform) {
 }
 
 function isLandingValid(platform, x) {
-  return Math.abs(x - platform.x) <= platformHalfWidth && isColorValid(platform);
+  return Boolean(platform) && Math.abs(x - platform.x) <= platformHalfWidth && isColorValid(platform);
 }
 
 function resetGame() {
@@ -489,11 +504,11 @@ function resetGame() {
   hopProgress = 0;
   previousHop = 0;
   ballX = 0;
-  targetBallX = 0;
   platformLayout.clear();
-  platformLayout.set(0, { x: 0, type: 'normal', color: 'red', nextColor: null });
+  platformLayout.set(0, createLandingPlatforms(0));
   setScore(0);
   setBallColor('red');
+  targetBallX = findValidPlatformForColor(1, currentBallColor)?.x ?? 0;
   gameMessage.textContent = '只能落到同色平台；彩虹平台会换色';
   document.body.classList.add('is-playing');
   document.body.classList.remove('is-game-over');
@@ -586,7 +601,8 @@ function animate() {
   const currentLanding = Math.floor(hopProgress);
   const nextLandingIndex = currentLanding + 1;
   const nextPadZ = nearZ - nextLandingIndex * landingGap;
-  const nextPlatform = getPlatformData(nextLandingIndex);
+  const nextPlatforms = getLandingPlatforms(nextLandingIndex);
+  const nextPlatform = findPlatformAt(nextLandingIndex, targetBallX);
   const targetWillLand = isLandingValid(nextPlatform, targetBallX);
   window.__bounceBuddyDebug = {
     ballY: ball.position.y,
@@ -595,6 +611,7 @@ function animate() {
     currentLanding,
     nextLandingIndex,
     nextPlatform,
+    nextPlatforms,
     targetBallX,
     targetWillLand,
   };
@@ -605,18 +622,24 @@ function animate() {
   targetMarker.material.color.setHex(targetWillLand ? 0x91f7ff : 0xff6fa3);
   targetMarker.scale.setScalar(1 + bounce * 0.18);
 
-  for (let i = 0; i < landingPads.length; i += 1) {
+  for (let i = 0; i < visibleLandingCount; i += 1) {
     const landingIndex = currentLanding + i;
     const padZ = nearZ - landingIndex * landingGap;
-    const platform = getPlatformData(landingIndex);
-    const padX = platform.x;
+    const platforms = getLandingPlatforms(landingIndex);
     const distanceFromBall = Math.abs(padZ - z);
-    const pad = landingPads[i];
-    const isCurrentTarget = landingIndex === currentLanding + 1;
 
-    pad.position.set(padX, 0.08, padZ);
-    pad.scale.setScalar(distanceFromBall < 1.2 ? 1.08 : 1);
-    applyPlatformVisual(pad, platform, isCurrentTarget);
+    for (let laneIndex = 0; laneIndex < platforms.length; laneIndex += 1) {
+      const platform = platforms[laneIndex];
+      const pad = landingPads[i * lanePositions.length + laneIndex];
+      const isCurrentTarget =
+        landingIndex === currentLanding + 1 && Math.abs(targetBallX - platform.x) < 0.2;
+      const targetScale = isCurrentTarget ? 1.12 : 1;
+      const landingScale = distanceFromBall < 1.2 ? 1.05 : 1;
+
+      pad.position.set(platform.x, 0.08, padZ);
+      pad.scale.setScalar(targetScale * landingScale);
+      applyPlatformVisual(pad, platform, isCurrentTarget);
+    }
   }
 
   const cameraTarget = new THREE.Vector3(ballX * 0.38, 1.75, z - 4.5);
@@ -628,8 +651,8 @@ function animate() {
 
   if (isGameRunning && hop < previousHop) {
     const landingIndex = Math.floor(hopProgress);
-    const platform = getPlatformData(landingIndex);
-    const onPlatform = Math.abs(ballX - platform.x) <= platformHalfWidth;
+    const platform = findPlatformAt(landingIndex, ballX);
+    const onPlatform = Boolean(platform);
     const landed = onPlatform && isColorValid(platform);
 
     createImpact(ballX, z);

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Bounce Buddy</title>
+  </head>
+  <body>
+    <div id="app">
+      <div class="game-hud">
+        <div class="score-board">
+          <span>分数</span>
+          <strong class="score-value">0</strong>
+        </div>
+        <p class="game-message">用 A/D 或方向键调整位置，落在发光平台上</p>
+        <button class="start-button" type="button">开始游戏</button>
+        <div class="speed-control" aria-label="选择前进速度">
+          <span>速度档位 <strong class="speed-value">5</strong></span>
+          <select class="speed-select" aria-label="速度档位">
+            <option value="1">1 档</option>
+            <option value="2">2 档</option>
+            <option value="3">3 档</option>
+            <option value="4">4 档</option>
+            <option value="5" selected>5 档</option>
+            <option value="6">6 档</option>
+            <option value="7">7 档</option>
+            <option value="8">8 档</option>
+            <option value="9">9 档</option>
+            <option value="10">10 档</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

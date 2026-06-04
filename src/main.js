@@ -247,6 +247,7 @@ const platformHalfWidth = 0.86;
 const landingPads = [];
 const visibleLandingCount = 12;
 const maxPlatformsPerLanding = 2;
+const wildcardLandingInterval = 4;
 const landingPadGeometry = new THREE.BoxGeometry(1.72, 0.16, 1.45);
 const wildcardStripeGeometry = new THREE.BoxGeometry(0.42, 0.035, 1.55);
 const wildcardBeaconGeometry = new THREE.BoxGeometry(0.2, 0.34, 0.22);
@@ -425,8 +426,9 @@ let score = 0;
 let currentBallColor = 'red';
 let bestScore = readBestScore();
 const platformLayout = new Map([
-  [0, createLandingPlatforms(0)],
+  [0, createLandingPlatforms(0, 'red')],
 ]);
+const routeColors = new Map([[0, 'red']]);
 
 function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
@@ -450,16 +452,16 @@ function setSpeedLevel(level) {
 
 function getNextColor(colorKey) {
   const currentIndex = colorOrder.indexOf(colorKey);
-  return colorOrder[(currentIndex + 1 + Math.floor(Math.random() * 2)) % colorOrder.length];
+  return colorOrder[(currentIndex + 1) % colorOrder.length];
 }
 
-function createLandingPlatforms(index) {
+function createLandingPlatforms(index, requiredColor) {
   if (index === 0) {
     return [{ x: 0, type: 'normal', color: 'red', nextColor: null }];
   }
 
   const platformCount = Math.min(maxPlatformsPerLanding, 1 + Number(index % 3 !== 0));
-  const shouldCreateWildcard = index > 1 && index % 4 === 0;
+  const shouldCreateWildcard = index > 1 && index % wildcardLandingInterval === 0;
   const startLane = index % lanePositions.length;
   const lanes = [];
 
@@ -467,18 +469,26 @@ function createLandingPlatforms(index) {
     lanes.push((startLane + i * 2) % lanePositions.length);
   }
 
+  const validLaneIndex = shouldCreateWildcard
+    ? lanes[0]
+    : lanes[index % lanes.length];
+  const nextColor = shouldCreateWildcard ? getNextColor(requiredColor) : null;
+
   return lanes.map((laneIndex, platformIndex) => {
     const x = lanePositions[laneIndex];
-    const color = colorOrder[(index + laneIndex) % colorOrder.length];
 
     if (shouldCreateWildcard && platformIndex === 0) {
       return {
         x,
         type: 'wildcard',
-        color,
-        nextColor: getNextColor(color),
+        color: requiredColor,
+        nextColor,
       };
     }
+
+    const color = laneIndex === validLaneIndex
+      ? requiredColor
+      : getNextColor(requiredColor);
 
     return {
       x,
@@ -489,30 +499,24 @@ function createLandingPlatforms(index) {
   });
 }
 
+function getRouteColor(index) {
+  if (!routeColors.has(index)) {
+    const previousColor = getRouteColor(index - 1);
+    const previousPlatforms = getLandingPlatforms(index - 1);
+    const wildcardPlatform = previousPlatforms.find((platform) => platform.type === 'wildcard');
+
+    routeColors.set(index, wildcardPlatform?.nextColor ?? previousColor);
+  }
+
+  return routeColors.get(index);
+}
+
 function getLandingPlatforms(index) {
   if (!platformLayout.has(index)) {
-    platformLayout.set(index, createLandingPlatforms(index));
+    platformLayout.set(index, createLandingPlatforms(index, getRouteColor(index)));
   }
 
   return platformLayout.get(index);
-}
-
-function ensureLandingHasValidPlatform(index, colorKey) {
-  const platforms = getLandingPlatforms(index);
-
-  if (platforms.some((platform) => platform.type === 'wildcard' || platform.color === colorKey)) {
-    return platforms;
-  }
-
-  const fallbackIndex = index % platforms.length;
-  platforms[fallbackIndex] = {
-    ...platforms[fallbackIndex],
-    type: 'normal',
-    color: colorKey,
-    nextColor: null,
-  };
-
-  return platforms;
 }
 
 function findPlatformAt(index, x) {
@@ -522,7 +526,7 @@ function findPlatformAt(index, x) {
 }
 
 function findValidPlatformForColor(index, colorKey) {
-  return ensureLandingHasValidPlatform(index, colorKey).find(
+  return getLandingPlatforms(index).find(
     (platform) => platform.type === 'wildcard' || platform.color === colorKey
   );
 }
@@ -608,7 +612,9 @@ function resetGame() {
   previousHop = 0;
   ballX = 0;
   platformLayout.clear();
-  platformLayout.set(0, createLandingPlatforms(0));
+  routeColors.clear();
+  routeColors.set(0, 'red');
+  platformLayout.set(0, createLandingPlatforms(0, 'red'));
   setScore(0);
   setCurrentSpeedLevel(selectedSpeedLevel);
   setBallColor('red');
@@ -707,7 +713,7 @@ function animate() {
   const currentLanding = Math.floor(hopProgress);
   const nextLandingIndex = currentLanding + 1;
   const nextPadZ = nearZ - nextLandingIndex * landingGap;
-  const nextPlatforms = ensureLandingHasValidPlatform(nextLandingIndex, currentBallColor);
+  const nextPlatforms = getLandingPlatforms(nextLandingIndex);
   const nextPlatform = findPlatformAt(nextLandingIndex, targetBallX);
   const targetWillLand = isLandingValid(nextPlatform, targetBallX);
   window.__bounceBuddyDebug = {
@@ -765,7 +771,6 @@ function animate() {
 
   if (isGameRunning && hop < previousHop) {
     const landingIndex = Math.floor(hopProgress);
-    ensureLandingHasValidPlatform(landingIndex, currentBallColor);
     const platform = findPlatformAt(landingIndex, ballX);
     const onPlatform = Boolean(platform);
     const landed = onPlatform && isColorValid(platform);

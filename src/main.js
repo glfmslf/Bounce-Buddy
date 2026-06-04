@@ -7,6 +7,7 @@ const speedSelect = document.querySelector('.speed-select');
 const speedValue = document.querySelector('.speed-value');
 const scoreValue = document.querySelector('.score-value');
 const bestScoreValue = document.querySelector('.best-score-value');
+const currentColorValue = document.querySelector('.current-color-value');
 const gameMessage = document.querySelector('.game-message');
 let isGameRunning = false;
 let isGameOver = false;
@@ -22,6 +23,38 @@ const starPalette = [
   new THREE.Color(0xd9fbff),
   new THREE.Color(0x78a7ff),
 ];
+
+const gameColors = {
+  red: {
+    label: '红色',
+    ball: 0x5d1824,
+    emissive: 0xff3f5f,
+    pad: 0x6d1228,
+    edge: 0xff9aac,
+  },
+  blue: {
+    label: '蓝色',
+    ball: 0x183c6d,
+    emissive: 0x29d7ff,
+    pad: 0x123b6d,
+    edge: 0xa6f6ff,
+  },
+  yellow: {
+    label: '黄色',
+    ball: 0x625018,
+    emissive: 0xffd257,
+    pad: 0x6d5212,
+    edge: 0xffef9a,
+  },
+};
+
+const colorOrder = ['red', 'blue', 'yellow'];
+const wildcardPad = {
+  label: '彩虹',
+  pad: 0xf4fbff,
+  emissive: 0xffffff,
+  edge: 0xffffff,
+};
 
 const camera = new THREE.PerspectiveCamera(
   45,
@@ -228,15 +261,39 @@ for (let i = 0; i < 12; i += 1) {
   const body = new THREE.Mesh(landingPadGeometry, landingPadMaterial.clone());
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(landingPadGeometry),
-    landingPadEdgeMaterial
+    landingPadEdgeMaterial.clone()
   );
 
   body.receiveShadow = true;
   pad.add(body);
   pad.add(edges);
   pad.userData.body = body;
+  pad.userData.edges = edges;
   scene.add(pad);
   landingPads.push(pad);
+}
+
+function applyPlatformVisual(pad, platform, isCurrentTarget) {
+  const bodyMaterial = pad.userData.body.material;
+  const edgeMaterial = pad.userData.edges.material;
+
+  if (platform.type === 'wildcard') {
+    bodyMaterial.color.setHex(wildcardPad.pad);
+    bodyMaterial.emissive.setHex(wildcardPad.emissive);
+    bodyMaterial.emissiveIntensity = isCurrentTarget ? 1.55 : 1.05;
+    bodyMaterial.opacity = 0.9;
+    edgeMaterial.color.setHex(gameColors[platform.nextColor].edge);
+    edgeMaterial.opacity = isCurrentTarget ? 1 : 0.86;
+    return;
+  }
+
+  const color = gameColors[platform.color];
+  bodyMaterial.color.setHex(color.pad);
+  bodyMaterial.emissive.setHex(color.emissive);
+  bodyMaterial.emissiveIntensity = isCurrentTarget ? 1.2 : 0.75;
+  bodyMaterial.opacity = 0.82;
+  edgeMaterial.color.setHex(color.edge);
+  edgeMaterial.opacity = isCurrentTarget ? 0.92 : 0.72;
 }
 
 function createImpact(x, z) {
@@ -302,10 +359,13 @@ let previousHop = 0;
 let ballX = 0;
 let targetBallX = 0;
 let score = 0;
+let currentBallColor = 'red';
 let bestScore = readBestScore();
 const lanePositions = [-2.4, 0, 2.4];
 const platformHalfWidth = 1.2;
-const platformLayout = new Map([[0, 0]]);
+const platformLayout = new Map([
+  [0, { x: 0, type: 'normal', color: 'red', nextColor: null }],
+]);
 
 function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
@@ -318,11 +378,37 @@ function setSpeedLevel(level) {
   speedSelect.value = String(level);
 }
 
-function getPlatformX(index) {
+function getNextColor(colorKey) {
+  const currentIndex = colorOrder.indexOf(colorKey);
+  return colorOrder[(currentIndex + 1 + Math.floor(Math.random() * 2)) % colorOrder.length];
+}
+
+function createPlatformData(index) {
+  const previousPlatform = getPlatformData(index - 1);
+  const candidates = lanePositions.filter((x) => Math.abs(x - previousPlatform.x) <= 2.4);
+  const x = candidates[Math.floor(Math.random() * candidates.length)];
+  const shouldCreateWildcard = index > 1 && index % 4 === 0;
+
+  if (shouldCreateWildcard) {
+    return {
+      x,
+      type: 'wildcard',
+      color: previousPlatform.color,
+      nextColor: getNextColor(previousPlatform.color),
+    };
+  }
+
+  return {
+    x,
+    type: 'normal',
+    color: previousPlatform.nextColor ?? previousPlatform.color,
+    nextColor: null,
+  };
+}
+
+function getPlatformData(index) {
   if (!platformLayout.has(index)) {
-    const previousX = getPlatformX(index - 1);
-    const candidates = lanePositions.filter((x) => Math.abs(x - previousX) <= 2.4);
-    platformLayout.set(index, candidates[Math.floor(Math.random() * candidates.length)]);
+    platformLayout.set(index, createPlatformData(index));
   }
 
   return platformLayout.get(index);
@@ -331,6 +417,18 @@ function getPlatformX(index) {
 function setScore(value) {
   score = value;
   scoreValue.textContent = String(score);
+}
+
+function setBallColor(colorKey) {
+  currentBallColor = colorKey;
+  const color = gameColors[colorKey];
+  const glowColor = `#${color.emissive.toString(16).padStart(6, '0')}`;
+
+  ballMaterial.color.setHex(color.ball);
+  ballMaterial.emissive.setHex(color.emissive);
+  currentColorValue.textContent = color.label;
+  currentColorValue.style.color = glowColor;
+  currentColorValue.style.textShadow = `0 0 18px ${glowColor}`;
 }
 
 function readBestScore() {
@@ -377,6 +475,14 @@ function shiftTargetLane(direction) {
   targetBallX = lanePositions[nextLane];
 }
 
+function isColorValid(platform) {
+  return platform.type === 'wildcard' || platform.color === currentBallColor;
+}
+
+function isLandingValid(platform, x) {
+  return Math.abs(x - platform.x) <= platformHalfWidth && isColorValid(platform);
+}
+
 function resetGame() {
   isGameRunning = true;
   isGameOver = false;
@@ -385,9 +491,10 @@ function resetGame() {
   ballX = 0;
   targetBallX = 0;
   platformLayout.clear();
-  platformLayout.set(0, 0);
+  platformLayout.set(0, { x: 0, type: 'normal', color: 'red', nextColor: null });
   setScore(0);
-  gameMessage.textContent = '按 A/D 或方向键选择下一次落点';
+  setBallColor('red');
+  gameMessage.textContent = '只能落到同色平台；彩虹平台会换色';
   document.body.classList.add('is-playing');
   document.body.classList.remove('is-game-over');
   impactEffects.splice(0).forEach((effect) => {
@@ -402,7 +509,7 @@ function resetGame() {
   startButton.classList.add('is-running');
 }
 
-function endGame() {
+function endGame(reason = '') {
   isGameRunning = false;
   isGameOver = true;
   document.body.classList.add('is-game-over');
@@ -411,12 +518,16 @@ function endGame() {
   if (score > bestScore) {
     setBestScore(score);
     gameMessage.textContent = `新纪录！最终得分 ${score}`;
-  } else {
-    gameMessage.textContent = `游戏结束，最终得分 ${score}`;
+    return;
   }
+
+  gameMessage.textContent = reason
+    ? `${reason}，最终得分 ${score}`
+    : `游戏结束，最终得分 ${score}`;
 }
 
 bestScoreValue.textContent = String(bestScore);
+setBallColor(currentBallColor);
 setSpeedLevel(selectedSpeedLevel);
 
 speedSelect.addEventListener('change', () => {
@@ -467,8 +578,6 @@ function animate() {
   const shadowScale = 1.85 - bounce * 0.75;
   shadowBlob.scale.set(shadowScale, shadowScale, 1);
   shadowBlob.material.opacity = 0.18 - bounce * 0.1;
-  window.__bounceBuddyDebug = { ballY: ball.position.y, ballZ: ball.position.z };
-
   const groundCenterZ = z - 18;
   floor.position.z = groundCenterZ;
   grid.position.z = groundCenterZ;
@@ -477,8 +586,18 @@ function animate() {
   const currentLanding = Math.floor(hopProgress);
   const nextLandingIndex = currentLanding + 1;
   const nextPadZ = nearZ - nextLandingIndex * landingGap;
-  const nextPlatformX = getPlatformX(nextLandingIndex);
-  const targetWillLand = Math.abs(targetBallX - nextPlatformX) <= platformHalfWidth;
+  const nextPlatform = getPlatformData(nextLandingIndex);
+  const targetWillLand = isLandingValid(nextPlatform, targetBallX);
+  window.__bounceBuddyDebug = {
+    ballY: ball.position.y,
+    ballZ: ball.position.z,
+    currentBallColor,
+    currentLanding,
+    nextLandingIndex,
+    nextPlatform,
+    targetBallX,
+    targetWillLand,
+  };
 
   targetMarker.visible = isGameRunning;
   targetMarker.position.set(targetBallX, 0.13, nextPadZ);
@@ -489,14 +608,15 @@ function animate() {
   for (let i = 0; i < landingPads.length; i += 1) {
     const landingIndex = currentLanding + i;
     const padZ = nearZ - landingIndex * landingGap;
-    const padX = getPlatformX(landingIndex);
+    const platform = getPlatformData(landingIndex);
+    const padX = platform.x;
     const distanceFromBall = Math.abs(padZ - z);
     const pad = landingPads[i];
     const isCurrentTarget = landingIndex === currentLanding + 1;
 
     pad.position.set(padX, 0.08, padZ);
     pad.scale.setScalar(distanceFromBall < 1.2 ? 1.08 : 1);
-    pad.userData.body.material.emissiveIntensity = isCurrentTarget ? 1.2 : 0.75;
+    applyPlatformVisual(pad, platform, isCurrentTarget);
   }
 
   const cameraTarget = new THREE.Vector3(ballX * 0.38, 1.75, z - 4.5);
@@ -508,16 +628,22 @@ function animate() {
 
   if (isGameRunning && hop < previousHop) {
     const landingIndex = Math.floor(hopProgress);
-    const platformX = getPlatformX(landingIndex);
-    const landed = Math.abs(ballX - platformX) <= platformHalfWidth;
+    const platform = getPlatformData(landingIndex);
+    const onPlatform = Math.abs(ballX - platform.x) <= platformHalfWidth;
+    const landed = onPlatform && isColorValid(platform);
 
     createImpact(ballX, z);
 
     if (landed) {
       setScore(score + 1);
-      gameMessage.textContent = Math.abs(ballX - platformX) < 0.36 ? 'Perfect!' : '命中平台';
+      if (platform.type === 'wildcard') {
+        setBallColor(platform.nextColor);
+        gameMessage.textContent = `彩虹换色：${gameColors[platform.nextColor].label}`;
+      } else {
+        gameMessage.textContent = Math.abs(ballX - platform.x) < 0.36 ? 'Perfect!' : '命中平台';
+      }
     } else {
-      endGame();
+      endGame(onPlatform ? '颜色不匹配' : '没有落到平台');
     }
   }
 

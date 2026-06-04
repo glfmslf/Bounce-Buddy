@@ -426,9 +426,9 @@ let score = 0;
 let currentBallColor = 'red';
 let bestScore = readBestScore();
 const platformLayout = new Map([
-  [0, createLandingPlatforms(0, 'red')],
+  [0, createLandingPlatforms(0, { color: 'red', laneIndex: 1 })],
 ]);
-const routeColors = new Map([[0, 'red']]);
+const routePlans = new Map([[0, { color: 'red', laneIndex: 1 }]]);
 
 function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
@@ -455,23 +455,25 @@ function getNextColor(colorKey) {
   return colorOrder[(currentIndex + 1) % colorOrder.length];
 }
 
-function createLandingPlatforms(index, requiredColor) {
+function createLandingPlatforms(index, routePlan) {
   if (index === 0) {
     return [{ x: 0, type: 'normal', color: 'red', nextColor: null }];
   }
 
+  const requiredColor = routePlan.color;
   const platformCount = Math.min(maxPlatformsPerLanding, 1 + Number(index % 3 !== 0));
   const shouldCreateWildcard = index > 1 && index % wildcardLandingInterval === 0;
-  const startLane = index % lanePositions.length;
-  const lanes = [];
+  const routeLaneIndex = routePlan.laneIndex;
+  const lanes = [routeLaneIndex];
 
-  for (let i = 0; i < platformCount; i += 1) {
-    lanes.push((startLane + i * 2) % lanePositions.length);
+  if (platformCount > 1) {
+    const distractorLane = lanePositions.findIndex(
+      (_, laneIndex) => laneIndex !== routeLaneIndex && Math.abs(laneIndex - routeLaneIndex) <= 1
+    );
+
+    lanes.push(distractorLane === -1 ? (routeLaneIndex + 1) % lanePositions.length : distractorLane);
   }
 
-  const validLaneIndex = shouldCreateWildcard
-    ? lanes[0]
-    : lanes[index % lanes.length];
   const nextColor = shouldCreateWildcard ? getNextColor(requiredColor) : null;
 
   return lanes.map((laneIndex, platformIndex) => {
@@ -486,7 +488,7 @@ function createLandingPlatforms(index, requiredColor) {
       };
     }
 
-    const color = laneIndex === validLaneIndex
+    const color = laneIndex === routeLaneIndex
       ? requiredColor
       : getNextColor(requiredColor);
 
@@ -499,21 +501,32 @@ function createLandingPlatforms(index, requiredColor) {
   });
 }
 
-function getRouteColor(index) {
-  if (!routeColors.has(index)) {
-    const previousColor = getRouteColor(index - 1);
+function getNextRouteLane(index, previousLaneIndex) {
+  const candidates = lanePositions
+    .map((_, laneIndex) => laneIndex)
+    .filter((laneIndex) => Math.abs(laneIndex - previousLaneIndex) <= 1);
+
+  return candidates[index % candidates.length];
+}
+
+function getRoutePlan(index) {
+  if (!routePlans.has(index)) {
+    const previousPlan = getRoutePlan(index - 1);
     const previousPlatforms = getLandingPlatforms(index - 1);
     const wildcardPlatform = previousPlatforms.find((platform) => platform.type === 'wildcard');
 
-    routeColors.set(index, wildcardPlatform?.nextColor ?? previousColor);
+    routePlans.set(index, {
+      color: wildcardPlatform?.nextColor ?? previousPlan.color,
+      laneIndex: getNextRouteLane(index, previousPlan.laneIndex),
+    });
   }
 
-  return routeColors.get(index);
+  return routePlans.get(index);
 }
 
 function getLandingPlatforms(index) {
   if (!platformLayout.has(index)) {
-    platformLayout.set(index, createLandingPlatforms(index, getRouteColor(index)));
+    platformLayout.set(index, createLandingPlatforms(index, getRoutePlan(index)));
   }
 
   return platformLayout.get(index);
@@ -605,6 +618,42 @@ function isLandingValid(platform, x) {
   return Boolean(platform) && Math.abs(x - platform.x) <= platformHalfWidth && isColorValid(platform);
 }
 
+function simulateReachableRoute(stepCount = 500) {
+  let simulatedColor = 'red';
+  let simulatedLaneIndex = 1;
+
+  for (let landingIndex = 1; landingIndex <= stepCount; landingIndex += 1) {
+    const platforms = getLandingPlatforms(landingIndex);
+    const reachablePlatform = platforms.find((platform) => {
+      const laneIndex = lanePositions.indexOf(platform.x);
+      const colorMatches = platform.type === 'wildcard' || platform.color === simulatedColor;
+
+      return colorMatches && Math.abs(laneIndex - simulatedLaneIndex) <= 1;
+    });
+
+    if (!reachablePlatform) {
+      return {
+        ok: false,
+        reached: landingIndex - 1,
+        failedAt: landingIndex,
+        color: simulatedColor,
+        laneIndex: simulatedLaneIndex,
+        platforms,
+      };
+    }
+
+    simulatedLaneIndex = lanePositions.indexOf(reachablePlatform.x);
+
+    if (reachablePlatform.type === 'wildcard') {
+      simulatedColor = reachablePlatform.nextColor;
+    }
+  }
+
+  return { ok: true, reached: stepCount };
+}
+
+window.__bounceBuddySimulateRoute = simulateReachableRoute;
+
 function resetGame() {
   isGameRunning = true;
   isGameOver = false;
@@ -612,9 +661,9 @@ function resetGame() {
   previousHop = 0;
   ballX = 0;
   platformLayout.clear();
-  routeColors.clear();
-  routeColors.set(0, 'red');
-  platformLayout.set(0, createLandingPlatforms(0, 'red'));
+  routePlans.clear();
+  routePlans.set(0, { color: 'red', laneIndex: 1 });
+  platformLayout.set(0, createLandingPlatforms(0, { color: 'red', laneIndex: 1 }));
   setScore(0);
   setCurrentSpeedLevel(selectedSpeedLevel);
   setBallColor('red');
@@ -711,6 +760,29 @@ function animate() {
   starGround.position.z = groundCenterZ;
 
   const currentLanding = Math.floor(hopProgress);
+
+  if (isGameRunning && hop < previousHop) {
+    const landingIndex = Math.floor(hopProgress);
+    const platform = findPlatformAt(landingIndex, ballX);
+    const onPlatform = Boolean(platform);
+    const landed = onPlatform && isColorValid(platform);
+
+    createImpact(ballX, z);
+
+    if (landed) {
+      setScore(score + 1);
+      updateSpeedForScore(score);
+      if (platform.type === 'wildcard') {
+        setBallColor(platform.nextColor);
+        gameMessage.textContent = `彩虹换色：${gameColors[platform.nextColor].label}`;
+      } else {
+        gameMessage.textContent = Math.abs(ballX - platform.x) < 0.36 ? 'Perfect!' : '命中平台';
+      }
+    } else {
+      endGame(onPlatform ? '颜色不匹配' : '没有落到平台');
+    }
+  }
+
   const nextLandingIndex = currentLanding + 1;
   const nextPadZ = nearZ - nextLandingIndex * landingGap;
   const nextPlatforms = getLandingPlatforms(nextLandingIndex);
@@ -768,28 +840,6 @@ function animate() {
 
   keyLight.position.set(4, 8.5, z + 5);
   keyLight.target.position.set(0, 1, z - 2);
-
-  if (isGameRunning && hop < previousHop) {
-    const landingIndex = Math.floor(hopProgress);
-    const platform = findPlatformAt(landingIndex, ballX);
-    const onPlatform = Boolean(platform);
-    const landed = onPlatform && isColorValid(platform);
-
-    createImpact(ballX, z);
-
-    if (landed) {
-      setScore(score + 1);
-      updateSpeedForScore(score);
-      if (platform.type === 'wildcard') {
-        setBallColor(platform.nextColor);
-        gameMessage.textContent = `彩虹换色：${gameColors[platform.nextColor].label}`;
-      } else {
-        gameMessage.textContent = Math.abs(ballX - platform.x) < 0.36 ? 'Perfect!' : '命中平台';
-      }
-    } else {
-      endGame(onPlatform ? '颜色不匹配' : '没有落到平台');
-    }
-  }
 
   previousHop = hop;
 

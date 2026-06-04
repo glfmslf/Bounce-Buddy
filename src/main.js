@@ -12,7 +12,10 @@ const gameMessage = document.querySelector('.game-message');
 let isGameRunning = false;
 let isGameOver = false;
 let selectedSpeedLevel = Number(speedSelect.value);
+let currentSpeedLevel = selectedSpeedLevel;
 const bestScoreStorageKey = 'bounceBuddyBestScore';
+const speedUpScoreInterval = 10;
+const maxRuntimeSpeedLevel = 100;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07111f);
@@ -372,11 +375,20 @@ function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
 }
 
-function setSpeedLevel(level) {
-  selectedSpeedLevel = level;
-  hopRate = speedLevelToHopRate(level);
+function updateSpeedDisplay(level) {
   speedValue.textContent = String(level);
-  speedSelect.value = String(level);
+}
+
+function setCurrentSpeedLevel(level) {
+  currentSpeedLevel = THREE.MathUtils.clamp(level, 1, maxRuntimeSpeedLevel);
+  hopRate = speedLevelToHopRate(currentSpeedLevel);
+  updateSpeedDisplay(currentSpeedLevel);
+}
+
+function setSpeedLevel(level) {
+  selectedSpeedLevel = THREE.MathUtils.clamp(level, 1, 10);
+  speedSelect.value = String(selectedSpeedLevel);
+  setCurrentSpeedLevel(selectedSpeedLevel);
 }
 
 function getNextColor(colorKey) {
@@ -432,6 +444,11 @@ function findValidPlatformForColor(index, colorKey) {
 function setScore(value) {
   score = value;
   scoreValue.textContent = String(score);
+}
+
+function updateSpeedForScore(value) {
+  const speedBonus = Math.floor(value / speedUpScoreInterval);
+  setCurrentSpeedLevel(selectedSpeedLevel + speedBonus);
 }
 
 function setBallColor(colorKey) {
@@ -507,11 +524,13 @@ function resetGame() {
   platformLayout.clear();
   platformLayout.set(0, createLandingPlatforms(0));
   setScore(0);
+  setCurrentSpeedLevel(selectedSpeedLevel);
   setBallColor('red');
   targetBallX = findValidPlatformForColor(1, currentBallColor)?.x ?? 0;
   gameMessage.textContent = '只能落到同色平台；彩虹平台会换色';
   document.body.classList.add('is-playing');
   document.body.classList.remove('is-game-over');
+  speedSelect.disabled = true;
   impactEffects.splice(0).forEach((effect) => {
     scene.remove(effect.ring);
     scene.remove(effect.sparks);
@@ -528,6 +547,7 @@ function endGame(reason = '') {
   isGameRunning = false;
   isGameOver = true;
   document.body.classList.add('is-game-over');
+  speedSelect.disabled = false;
   startButton.textContent = '再来一次';
 
   if (score > bestScore) {
@@ -614,6 +634,7 @@ function animate() {
     nextPlatforms,
     targetBallX,
     targetWillLand,
+    currentSpeedLevel,
   };
 
   targetMarker.visible = isGameRunning;
@@ -659,6 +680,7 @@ function animate() {
 
     if (landed) {
       setScore(score + 1);
+      updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
         gameMessage.textContent = `彩虹换色：${gameColors[platform.nextColor].label}`;

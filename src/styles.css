@@ -195,6 +195,11 @@ canvas {
   border-color: rgba(145, 247, 255, 0.7);
 }
 
+.speed-select:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
 .speed-select option {
   color: #061120;
   background: #dff8ff;

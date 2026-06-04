@@ -65,6 +65,16 @@ canvas {
   text-shadow: 0 0 22px rgba(103, 232, 255, 0.42);
 }
 
+.best-score-board {
+  margin-top: -10px;
+}
+
+.best-score-board strong {
+  color: #91f7ff;
+  font-size: 22px;
+  text-shadow: 0 0 18px rgba(103, 232, 255, 0.28);
+}
+
 .game-message {
   max-width: 340px;
   margin: -4px 0 2px;
@@ -185,6 +195,15 @@ body.is-playing .score-board {
 
 body.is-playing .score-board strong {
   font-size: 28px;
+}
+
+body.is-playing .best-score-board {
+  margin-top: 0;
+  opacity: 0.76;
+}
+
+body.is-playing .best-score-board strong {
+  font-size: 20px;
 }
 
 body.is-playing .game-message {

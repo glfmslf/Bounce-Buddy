@@ -1,5 +1,33 @@
 import * as THREE from 'three';
 import './styles.css';
+import {
+  baseY,
+  bestScoreStorageKey,
+  bounceHeight,
+  gameColors,
+  landingGap,
+  lanePositions,
+  maxRuntimeSpeedLevel,
+  nearZ,
+  platformHalfWidth,
+  speedUpScoreInterval,
+  starPaletteHex,
+  visibleLandingCount,
+} from './game/config.js';
+import {
+  findPlatformAt,
+  findValidPlatformForColor,
+  getLandingPlatforms,
+  getRouteSample,
+  getRouteSeed,
+  platformMatchesColor,
+  resetRoute,
+  simulateReachableRoute,
+} from './game/route.js';
+import {
+  applyPlatformVisual,
+  createLandingPads,
+} from './scene/platforms.js';
 
 const app = document.querySelector('#app');
 const startButton = document.querySelector('.start-button');
@@ -13,51 +41,12 @@ let isGameRunning = false;
 let isGameOver = false;
 let selectedSpeedLevel = Number(speedSelect.value);
 let currentSpeedLevel = selectedSpeedLevel;
-const bestScoreStorageKey = 'bounceBuddyBestScore';
-const speedUpScoreInterval = 10;
-const maxRuntimeSpeedLevel = 100;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07111f);
 scene.fog = new THREE.Fog(0x07111f, 18, 58);
 
-const starPalette = [
-  new THREE.Color(0x8ff4ff),
-  new THREE.Color(0xd9fbff),
-  new THREE.Color(0x78a7ff),
-];
-
-const gameColors = {
-  red: {
-    label: '红色',
-    ball: 0x5d1824,
-    emissive: 0xff3f5f,
-    pad: 0x6d1228,
-    edge: 0xff9aac,
-  },
-  blue: {
-    label: '蓝色',
-    ball: 0x183c6d,
-    emissive: 0x29d7ff,
-    pad: 0x123b6d,
-    edge: 0xa6f6ff,
-  },
-  yellow: {
-    label: '黄色',
-    ball: 0x625018,
-    emissive: 0xffd257,
-    pad: 0x6d5212,
-    edge: 0xffef9a,
-  },
-};
-
-const colorOrder = ['red', 'blue', 'yellow'];
-const wildcardPad = {
-  label: '彩虹',
-  pad: 0xf4fbff,
-  emissive: 0xffffff,
-  edge: 0xffffff,
-};
+const starPalette = starPaletteHex.map((hex) => new THREE.Color(hex));
 
 const camera = new THREE.PerspectiveCamera(
   45,
@@ -242,124 +231,7 @@ const impactMaterial = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
-const lanePositions = [-2.4, 0, 2.4];
-const platformHalfWidth = 0.86;
-const landingPads = [];
-const visibleLandingCount = 12;
-const maxPlatformsPerLanding = 2;
-const minWildcardGap = 3;
-const maxWildcardGap = 6;
-const landingPadGeometry = new THREE.BoxGeometry(1.72, 0.16, 1.45);
-const wildcardStripeGeometry = new THREE.BoxGeometry(0.42, 0.035, 1.55);
-const wildcardBeaconGeometry = new THREE.BoxGeometry(0.2, 0.34, 0.22);
-const landingPadMaterial = new THREE.MeshStandardMaterial({
-  color: 0x123b6d,
-  emissive: 0x29d7ff,
-  emissiveIntensity: 0.75,
-  roughness: 0.25,
-  metalness: 0.25,
-  transparent: true,
-  opacity: 0.82,
-});
-const landingPadEdgeMaterial = new THREE.LineBasicMaterial({
-  color: 0xa6f6ff,
-  transparent: true,
-  opacity: 0.8,
-});
-const wildcardStripeMaterials = [
-  new THREE.MeshBasicMaterial({
-    color: gameColors.red.emissive,
-    transparent: true,
-    opacity: 0.92,
-    blending: THREE.AdditiveBlending,
-  }),
-  new THREE.MeshBasicMaterial({
-    color: gameColors.yellow.emissive,
-    transparent: true,
-    opacity: 0.92,
-    blending: THREE.AdditiveBlending,
-  }),
-  new THREE.MeshBasicMaterial({
-    color: gameColors.blue.emissive,
-    transparent: true,
-    opacity: 0.92,
-    blending: THREE.AdditiveBlending,
-  }),
-];
-
-for (let i = 0; i < visibleLandingCount * lanePositions.length; i += 1) {
-  const pad = new THREE.Group();
-  const body = new THREE.Mesh(landingPadGeometry, landingPadMaterial.clone());
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(landingPadGeometry),
-    landingPadEdgeMaterial.clone()
-  );
-  const stripes = wildcardStripeMaterials.map((material, stripeIndex) => {
-    const stripe = new THREE.Mesh(wildcardStripeGeometry, material.clone());
-    stripe.position.set((stripeIndex - 1) * 0.48, 0.105, 0);
-    stripe.visible = false;
-    return stripe;
-  });
-  const beacons = wildcardStripeMaterials.map((material, beaconIndex) => {
-    const beacon = new THREE.Mesh(wildcardBeaconGeometry, material.clone());
-    beacon.position.set((beaconIndex - 1) * 0.34, 0.28, -0.48);
-    beacon.visible = false;
-    return beacon;
-  });
-
-  body.receiveShadow = true;
-  pad.add(body);
-  pad.add(edges);
-  stripes.forEach((stripe) => pad.add(stripe));
-  beacons.forEach((beacon) => pad.add(beacon));
-  pad.userData.body = body;
-  pad.userData.edges = edges;
-  pad.userData.stripes = stripes;
-  pad.userData.beacons = beacons;
-  scene.add(pad);
-  landingPads.push(pad);
-}
-
-function applyPlatformVisual(pad, platform, isCurrentTarget) {
-  const bodyMaterial = pad.userData.body.material;
-  const edgeMaterial = pad.userData.edges.material;
-  const stripes = pad.userData.stripes;
-  const beacons = pad.userData.beacons;
-
-  if (platform.type === 'wildcard') {
-    bodyMaterial.color.setHex(wildcardPad.pad);
-    bodyMaterial.emissive.setHex(wildcardPad.emissive);
-    bodyMaterial.emissiveIntensity = isCurrentTarget ? 2.25 : 1.55;
-    bodyMaterial.opacity = 0.96;
-    edgeMaterial.color.setHex(0xffffff);
-    edgeMaterial.opacity = isCurrentTarget ? 1 : 0.95;
-    stripes.forEach((stripe, stripeIndex) => {
-      stripe.visible = true;
-      stripe.material.opacity = isCurrentTarget ? 1 : 0.86;
-      stripe.position.y = 0.11 + Math.sin(performance.now() * 0.006 + stripeIndex) * 0.012;
-    });
-    beacons.forEach((beacon, beaconIndex) => {
-      beacon.visible = true;
-      beacon.material.opacity = isCurrentTarget ? 1 : 0.82;
-      beacon.scale.y = 1 + Math.sin(performance.now() * 0.006 + beaconIndex) * 0.16;
-    });
-    return;
-  }
-
-  const color = gameColors[platform.color];
-  stripes.forEach((stripe) => {
-    stripe.visible = false;
-  });
-  beacons.forEach((beacon) => {
-    beacon.visible = false;
-  });
-  bodyMaterial.color.setHex(color.pad);
-  bodyMaterial.emissive.setHex(color.emissive);
-  bodyMaterial.emissiveIntensity = isCurrentTarget ? 1.2 : 0.75;
-  bodyMaterial.opacity = 0.82;
-  edgeMaterial.color.setHex(color.edge);
-  edgeMaterial.opacity = isCurrentTarget ? 0.92 : 0.72;
-}
+const landingPads = createLandingPads(scene);
 
 function createImpact(x, z) {
   const ring = new THREE.Mesh(
@@ -414,10 +286,6 @@ function createImpact(x, z) {
 
 const timer = new THREE.Timer();
 timer.connect(document);
-const bounceHeight = 3.05;
-const baseY = 0.62;
-const nearZ = 3.2;
-const landingGap = 2.88;
 let hopRate = speedLevelToHopRate(selectedSpeedLevel);
 let hopProgress = 0;
 let previousHop = 0;
@@ -426,11 +294,6 @@ let targetBallX = 0;
 let score = 0;
 let currentBallColor = 'red';
 let bestScore = readBestScore();
-let routeSeed = createRouteSeed();
-const platformLayout = new Map([
-  [0, createLandingPlatforms(0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false })],
-]);
-const routePlans = new Map([[0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false }]]);
 
 function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
@@ -450,238 +313,6 @@ function setSpeedLevel(level) {
   selectedSpeedLevel = THREE.MathUtils.clamp(level, 1, 10);
   speedSelect.value = String(selectedSpeedLevel);
   setCurrentSpeedLevel(selectedSpeedLevel);
-}
-
-function createRouteSeed() {
-  return Math.floor(Math.random() * 0xffffffff);
-}
-
-function seededValue(index, salt = 0) {
-  let state = (
-    routeSeed +
-    Math.imul(index + 1, 0x85ebca6b) +
-    Math.imul(salt + 1, 0xc2b2ae35)
-  ) >>> 0;
-
-  state ^= state >>> 16;
-  state = Math.imul(state, 0x7feb352d);
-  state ^= state >>> 15;
-  state = Math.imul(state, 0x846ca68b);
-  state ^= state >>> 16;
-
-  return (state >>> 0) / 0x100000000;
-}
-
-function pickSeeded(items, index, salt = 0) {
-  return items[Math.floor(seededValue(index, salt) * items.length)];
-}
-
-function getWeightedSeededCandidate(candidates, index, salt = 0) {
-  const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
-  let cursor = seededValue(index, salt) * totalWeight;
-
-  for (const candidate of candidates) {
-    cursor -= candidate.weight;
-
-    if (cursor <= 0) {
-      return candidate.value;
-    }
-  }
-
-  return candidates[candidates.length - 1].value;
-}
-
-function getNextColor(colorKey, index = 0) {
-  const recentColors = [];
-
-  for (let offset = 1; offset <= 4; offset += 1) {
-    const recentPlan = routePlans.get(index - offset);
-
-    if (recentPlan) {
-      recentColors.push(recentPlan.color);
-    }
-  }
-
-  const candidates = colorOrder
-    .filter((color) => color !== colorKey)
-    .map((color) => ({
-      value: color,
-      weight: recentColors.includes(color) ? 1 : 3,
-    }));
-
-  return getWeightedSeededCandidate(candidates, index, 41);
-}
-
-function getLastWildcardIndex(beforeIndex) {
-  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
-    if (routePlans.get(index)?.shouldCreateWildcard) {
-      return index;
-    }
-  }
-
-  return 0;
-}
-
-function shouldCreateWildcardLanding(index) {
-  if (index <= 2) {
-    return false;
-  }
-
-  const gap = index - getLastWildcardIndex(index);
-
-  if (gap < minWildcardGap) {
-    return false;
-  }
-
-  if (gap >= maxWildcardGap) {
-    return true;
-  }
-
-  return seededValue(index, 29) < 0.34;
-}
-
-function getPlatformCount(index) {
-  let platformCount = 1 + Number(seededValue(index, 3) < 0.48);
-  const previousPlatforms = platformLayout.get(index - 1);
-  const earlierPlatforms = platformLayout.get(index - 2);
-
-  if (
-    previousPlatforms &&
-    earlierPlatforms &&
-    previousPlatforms.length === earlierPlatforms.length &&
-    earlierPlatforms.length === platformCount
-  ) {
-    platformCount = platformCount === 1 ? 2 : 1;
-  }
-
-  return Math.min(maxPlatformsPerLanding, platformCount);
-}
-
-function createLandingPlatforms(index, routePlan) {
-  if (index === 0) {
-    return [{ x: 0, type: 'normal', color: 'red', nextColor: null }];
-  }
-
-  const requiredColor = routePlan.color;
-  const platformCount = getPlatformCount(index);
-  const shouldCreateWildcard = routePlan.shouldCreateWildcard;
-  const routeLaneIndex = routePlan.laneIndex;
-  const lanes = [routeLaneIndex];
-
-  if (platformCount > 1) {
-    const distractorCandidates = lanePositions
-      .map((_, laneIndex) => laneIndex)
-      .filter((laneIndex) => laneIndex !== routeLaneIndex);
-    const distractorLane = pickSeeded(
-      distractorCandidates,
-      index,
-      routeLaneIndex + 11
-    );
-
-    lanes.push(distractorLane);
-  }
-
-  const nextColor = shouldCreateWildcard ? getNextColor(requiredColor, index) : null;
-
-  return lanes.map((laneIndex, platformIndex) => {
-    const x = lanePositions[laneIndex];
-
-    if (shouldCreateWildcard && platformIndex === 0) {
-      return {
-        x,
-        type: 'wildcard',
-        color: requiredColor,
-        nextColor,
-      };
-    }
-
-    const color = laneIndex === routeLaneIndex
-      ? requiredColor
-      : getNextColor(requiredColor, index + laneIndex);
-
-    return {
-      x,
-      type: 'normal',
-      color,
-      nextColor: null,
-    };
-  });
-}
-
-function getNextRouteLane(index, previousLaneIndex) {
-  const candidates = lanePositions
-    .map((_, laneIndex) => laneIndex)
-    .filter((laneIndex) => Math.abs(laneIndex - previousLaneIndex) <= 1)
-    .map((laneIndex) => {
-      const recentLanes = [1, 2, 3, 4]
-        .map((offset) => routePlans.get(index - offset)?.laneIndex)
-        .filter((recentLaneIndex) => recentLaneIndex !== undefined);
-      const previousPreviousLaneIndex = routePlans.get(index - 2)?.laneIndex;
-      const previousMove = previousPreviousLaneIndex === undefined
-        ? null
-        : previousLaneIndex - previousPreviousLaneIndex;
-      const nextMove = laneIndex - previousLaneIndex;
-      let weight = 4;
-
-      if (laneIndex === previousLaneIndex) {
-        weight -= 1.5;
-      }
-
-      if (recentLanes.slice(0, 2).every((recentLaneIndex) => recentLaneIndex === laneIndex)) {
-        weight -= 1.5;
-      }
-
-      if (previousMove !== null && nextMove === previousMove) {
-        weight -= 1;
-      }
-
-      if (recentLanes[2] === laneIndex && recentLanes[1] === previousLaneIndex) {
-        weight -= 1.25;
-      }
-
-      return {
-        value: laneIndex,
-        weight: Math.max(0.4, weight),
-      };
-    });
-
-  return getWeightedSeededCandidate(candidates, index, 17);
-}
-
-function getRoutePlan(index) {
-  if (!routePlans.has(index)) {
-    const previousPlan = getRoutePlan(index - 1);
-    const previousPlatforms = getLandingPlatforms(index - 1);
-    const wildcardPlatform = previousPlatforms.find((platform) => platform.type === 'wildcard');
-
-    routePlans.set(index, {
-      color: wildcardPlatform?.nextColor ?? previousPlan.color,
-      laneIndex: getNextRouteLane(index, previousPlan.laneIndex),
-      shouldCreateWildcard: shouldCreateWildcardLanding(index),
-    });
-  }
-
-  return routePlans.get(index);
-}
-
-function getLandingPlatforms(index) {
-  if (!platformLayout.has(index)) {
-    platformLayout.set(index, createLandingPlatforms(index, getRoutePlan(index)));
-  }
-
-  return platformLayout.get(index);
-}
-
-function findPlatformAt(index, x) {
-  return getLandingPlatforms(index).find(
-    (platform) => Math.abs(x - platform.x) <= platformHalfWidth
-  );
-}
-
-function findValidPlatformForColor(index, colorKey) {
-  return getLandingPlatforms(index).find(
-    (platform) => platform.type === 'wildcard' || platform.color === colorKey
-  );
 }
 
 function setScore(value) {
@@ -750,85 +381,10 @@ function shiftTargetLane(direction) {
   targetBallX = lanePositions[nextLane];
 }
 
-function isColorValid(platform) {
-  return platform.type === 'wildcard' || platform.color === currentBallColor;
-}
-
 function isLandingValid(platform, x) {
-  return Boolean(platform) && Math.abs(x - platform.x) <= platformHalfWidth && isColorValid(platform);
-}
-
-function simulateReachableRoute(stepCount = 500) {
-  let simulatedColor = 'red';
-  let simulatedLaneIndex = 1;
-
-  for (let landingIndex = 1; landingIndex <= stepCount; landingIndex += 1) {
-    const platforms = getLandingPlatforms(landingIndex);
-    const reachablePlatform = platforms.find((platform) => {
-      const laneIndex = lanePositions.indexOf(platform.x);
-      const colorMatches = platform.type === 'wildcard' || platform.color === simulatedColor;
-
-      return colorMatches && Math.abs(laneIndex - simulatedLaneIndex) <= 1;
-    });
-
-    if (!reachablePlatform) {
-      return {
-        ok: false,
-        reached: landingIndex - 1,
-        failedAt: landingIndex,
-        color: simulatedColor,
-        laneIndex: simulatedLaneIndex,
-        platforms,
-      };
-    }
-
-    simulatedLaneIndex = lanePositions.indexOf(reachablePlatform.x);
-
-    if (reachablePlatform.type === 'wildcard') {
-      simulatedColor = reachablePlatform.nextColor;
-    }
-  }
-
-  return { ok: true, reached: stepCount };
-}
-
-function getRouteSample(stepCount = 16) {
-  let simulatedColor = 'red';
-  let simulatedLaneIndex = 1;
-  const steps = [];
-
-  for (let landingIndex = 1; landingIndex <= stepCount; landingIndex += 1) {
-    const platforms = getLandingPlatforms(landingIndex);
-    const reachablePlatform = platforms.find((platform) => {
-      const laneIndex = lanePositions.indexOf(platform.x);
-      const colorMatches = platform.type === 'wildcard' || platform.color === simulatedColor;
-
-      return colorMatches && Math.abs(laneIndex - simulatedLaneIndex) <= 1;
-    });
-
-    if (!reachablePlatform) {
-      break;
-    }
-
-    simulatedLaneIndex = lanePositions.indexOf(reachablePlatform.x);
-    steps.push({
-      landingIndex,
-      laneIndex: simulatedLaneIndex,
-      color: reachablePlatform.color,
-      type: reachablePlatform.type,
-      nextColor: reachablePlatform.nextColor,
-      platformCount: platforms.length,
-    });
-
-    if (reachablePlatform.type === 'wildcard') {
-      simulatedColor = reachablePlatform.nextColor;
-    }
-  }
-
-  return {
-    routeSeed,
-    steps,
-  };
+  return Boolean(platform) &&
+    Math.abs(x - platform.x) <= platformHalfWidth &&
+    platformMatchesColor(platform, currentBallColor);
 }
 
 window.__bounceBuddySimulateRoute = simulateReachableRoute;
@@ -840,15 +396,7 @@ function resetGame() {
   hopProgress = 0;
   previousHop = 0;
   ballX = 0;
-  routeSeed = createRouteSeed();
-  platformLayout.clear();
-  routePlans.clear();
-  routePlans.set(0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false });
-  platformLayout.set(0, createLandingPlatforms(0, {
-    color: 'red',
-    laneIndex: 1,
-    shouldCreateWildcard: false,
-  }));
+  resetRoute();
   setScore(0);
   setCurrentSpeedLevel(selectedSpeedLevel);
   setBallColor('red');
@@ -950,7 +498,7 @@ function animate() {
     const landingIndex = Math.floor(hopProgress);
     const platform = findPlatformAt(landingIndex, ballX);
     const onPlatform = Boolean(platform);
-    const landed = onPlatform && isColorValid(platform);
+    const landed = onPlatform && platformMatchesColor(platform, currentBallColor);
 
     createImpact(ballX, z);
 
@@ -984,7 +532,7 @@ function animate() {
     targetBallX,
     targetWillLand,
     currentSpeedLevel,
-    routeSeed,
+    routeSeed: getRouteSeed(),
   };
 
   targetMarker.visible = isGameRunning;

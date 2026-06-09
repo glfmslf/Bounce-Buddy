@@ -425,6 +425,7 @@ let targetBallX = 0;
 let score = 0;
 let currentBallColor = 'red';
 let bestScore = readBestScore();
+let routeSeed = createRouteSeed();
 const platformLayout = new Map([
   [0, createLandingPlatforms(0, { color: 'red', laneIndex: 1 })],
 ]);
@@ -450,9 +451,33 @@ function setSpeedLevel(level) {
   setCurrentSpeedLevel(selectedSpeedLevel);
 }
 
-function getNextColor(colorKey) {
-  const currentIndex = colorOrder.indexOf(colorKey);
-  return colorOrder[(currentIndex + 1) % colorOrder.length];
+function createRouteSeed() {
+  return Math.floor(Math.random() * 0xffffffff);
+}
+
+function seededValue(index, salt = 0) {
+  let state = (
+    routeSeed +
+    Math.imul(index + 1, 0x85ebca6b) +
+    Math.imul(salt + 1, 0xc2b2ae35)
+  ) >>> 0;
+
+  state ^= state >>> 16;
+  state = Math.imul(state, 0x7feb352d);
+  state ^= state >>> 15;
+  state = Math.imul(state, 0x846ca68b);
+  state ^= state >>> 16;
+
+  return (state >>> 0) / 0x100000000;
+}
+
+function pickSeeded(items, index, salt = 0) {
+  return items[Math.floor(seededValue(index, salt) * items.length)];
+}
+
+function getNextColor(colorKey, index = 0) {
+  const alternatives = colorOrder.filter((color) => color !== colorKey);
+  return pickSeeded(alternatives, index, 41);
 }
 
 function createLandingPlatforms(index, routePlan) {
@@ -461,20 +486,28 @@ function createLandingPlatforms(index, routePlan) {
   }
 
   const requiredColor = routePlan.color;
-  const platformCount = Math.min(maxPlatformsPerLanding, 1 + Number(index % 3 !== 0));
+  const platformCount = Math.min(
+    maxPlatformsPerLanding,
+    1 + Number(seededValue(index, 3) < 0.48)
+  );
   const shouldCreateWildcard = index > 1 && index % wildcardLandingInterval === 0;
   const routeLaneIndex = routePlan.laneIndex;
   const lanes = [routeLaneIndex];
 
   if (platformCount > 1) {
-    const distractorLane = lanePositions.findIndex(
-      (_, laneIndex) => laneIndex !== routeLaneIndex && Math.abs(laneIndex - routeLaneIndex) <= 1
+    const distractorCandidates = lanePositions
+      .map((_, laneIndex) => laneIndex)
+      .filter((laneIndex) => laneIndex !== routeLaneIndex);
+    const distractorLane = pickSeeded(
+      distractorCandidates,
+      index,
+      routeLaneIndex + 11
     );
 
-    lanes.push(distractorLane === -1 ? (routeLaneIndex + 1) % lanePositions.length : distractorLane);
+    lanes.push(distractorLane);
   }
 
-  const nextColor = shouldCreateWildcard ? getNextColor(requiredColor) : null;
+  const nextColor = shouldCreateWildcard ? getNextColor(requiredColor, index) : null;
 
   return lanes.map((laneIndex, platformIndex) => {
     const x = lanePositions[laneIndex];
@@ -490,7 +523,7 @@ function createLandingPlatforms(index, routePlan) {
 
     const color = laneIndex === routeLaneIndex
       ? requiredColor
-      : getNextColor(requiredColor);
+      : getNextColor(requiredColor, index + laneIndex);
 
     return {
       x,
@@ -506,7 +539,7 @@ function getNextRouteLane(index, previousLaneIndex) {
     .map((_, laneIndex) => laneIndex)
     .filter((laneIndex) => Math.abs(laneIndex - previousLaneIndex) <= 1);
 
-  return candidates[index % candidates.length];
+  return pickSeeded(candidates, index, 17);
 }
 
 function getRoutePlan(index) {
@@ -652,7 +685,47 @@ function simulateReachableRoute(stepCount = 500) {
   return { ok: true, reached: stepCount };
 }
 
+function getRouteSample(stepCount = 16) {
+  let simulatedColor = 'red';
+  let simulatedLaneIndex = 1;
+  const steps = [];
+
+  for (let landingIndex = 1; landingIndex <= stepCount; landingIndex += 1) {
+    const platforms = getLandingPlatforms(landingIndex);
+    const reachablePlatform = platforms.find((platform) => {
+      const laneIndex = lanePositions.indexOf(platform.x);
+      const colorMatches = platform.type === 'wildcard' || platform.color === simulatedColor;
+
+      return colorMatches && Math.abs(laneIndex - simulatedLaneIndex) <= 1;
+    });
+
+    if (!reachablePlatform) {
+      break;
+    }
+
+    simulatedLaneIndex = lanePositions.indexOf(reachablePlatform.x);
+    steps.push({
+      landingIndex,
+      laneIndex: simulatedLaneIndex,
+      color: reachablePlatform.color,
+      type: reachablePlatform.type,
+      nextColor: reachablePlatform.nextColor,
+      platformCount: platforms.length,
+    });
+
+    if (reachablePlatform.type === 'wildcard') {
+      simulatedColor = reachablePlatform.nextColor;
+    }
+  }
+
+  return {
+    routeSeed,
+    steps,
+  };
+}
+
 window.__bounceBuddySimulateRoute = simulateReachableRoute;
+window.__bounceBuddyGetRouteSample = getRouteSample;
 
 function resetGame() {
   isGameRunning = true;
@@ -660,6 +733,7 @@ function resetGame() {
   hopProgress = 0;
   previousHop = 0;
   ballX = 0;
+  routeSeed = createRouteSeed();
   platformLayout.clear();
   routePlans.clear();
   routePlans.set(0, { color: 'red', laneIndex: 1 });
@@ -799,6 +873,7 @@ function animate() {
     targetBallX,
     targetWillLand,
     currentSpeedLevel,
+    routeSeed,
   };
 
   targetMarker.visible = isGameRunning;

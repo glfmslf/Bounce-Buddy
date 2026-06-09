@@ -247,7 +247,8 @@ const platformHalfWidth = 0.86;
 const landingPads = [];
 const visibleLandingCount = 12;
 const maxPlatformsPerLanding = 2;
-const wildcardLandingInterval = 4;
+const minWildcardGap = 3;
+const maxWildcardGap = 6;
 const landingPadGeometry = new THREE.BoxGeometry(1.72, 0.16, 1.45);
 const wildcardStripeGeometry = new THREE.BoxGeometry(0.42, 0.035, 1.55);
 const wildcardBeaconGeometry = new THREE.BoxGeometry(0.2, 0.34, 0.22);
@@ -427,9 +428,9 @@ let currentBallColor = 'red';
 let bestScore = readBestScore();
 let routeSeed = createRouteSeed();
 const platformLayout = new Map([
-  [0, createLandingPlatforms(0, { color: 'red', laneIndex: 1 })],
+  [0, createLandingPlatforms(0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false })],
 ]);
-const routePlans = new Map([[0, { color: 'red', laneIndex: 1 }]]);
+const routePlans = new Map([[0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false }]]);
 
 function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
@@ -475,9 +476,85 @@ function pickSeeded(items, index, salt = 0) {
   return items[Math.floor(seededValue(index, salt) * items.length)];
 }
 
+function getWeightedSeededCandidate(candidates, index, salt = 0) {
+  const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
+  let cursor = seededValue(index, salt) * totalWeight;
+
+  for (const candidate of candidates) {
+    cursor -= candidate.weight;
+
+    if (cursor <= 0) {
+      return candidate.value;
+    }
+  }
+
+  return candidates[candidates.length - 1].value;
+}
+
 function getNextColor(colorKey, index = 0) {
-  const alternatives = colorOrder.filter((color) => color !== colorKey);
-  return pickSeeded(alternatives, index, 41);
+  const recentColors = [];
+
+  for (let offset = 1; offset <= 4; offset += 1) {
+    const recentPlan = routePlans.get(index - offset);
+
+    if (recentPlan) {
+      recentColors.push(recentPlan.color);
+    }
+  }
+
+  const candidates = colorOrder
+    .filter((color) => color !== colorKey)
+    .map((color) => ({
+      value: color,
+      weight: recentColors.includes(color) ? 1 : 3,
+    }));
+
+  return getWeightedSeededCandidate(candidates, index, 41);
+}
+
+function getLastWildcardIndex(beforeIndex) {
+  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+    if (routePlans.get(index)?.shouldCreateWildcard) {
+      return index;
+    }
+  }
+
+  return 0;
+}
+
+function shouldCreateWildcardLanding(index) {
+  if (index <= 2) {
+    return false;
+  }
+
+  const gap = index - getLastWildcardIndex(index);
+
+  if (gap < minWildcardGap) {
+    return false;
+  }
+
+  if (gap >= maxWildcardGap) {
+    return true;
+  }
+
+  return seededValue(index, 29) < 0.34;
+}
+
+function getPlatformCount(index) {
+  let platformCount = 1 + Number(seededValue(index, 3) < 0.48);
+  const previousPlatforms = platformLayout.get(index - 1);
+  const earlierPlatforms = platformLayout.get(index - 2);
+
+  if (
+    previousPlatforms &&
+    earlierPlatforms &&
+    previousPlatforms.length === earlierPlatforms.length &&
+    earlierPlatforms.length === platformCount
+  ) {
+    platformCount = platformCount === 1 ? 2 : 1;
+  }
+
+  return Math.min(maxPlatformsPerLanding, platformCount);
 }
 
 function createLandingPlatforms(index, routePlan) {
@@ -486,11 +563,8 @@ function createLandingPlatforms(index, routePlan) {
   }
 
   const requiredColor = routePlan.color;
-  const platformCount = Math.min(
-    maxPlatformsPerLanding,
-    1 + Number(seededValue(index, 3) < 0.48)
-  );
-  const shouldCreateWildcard = index > 1 && index % wildcardLandingInterval === 0;
+  const platformCount = getPlatformCount(index);
+  const shouldCreateWildcard = routePlan.shouldCreateWildcard;
   const routeLaneIndex = routePlan.laneIndex;
   const lanes = [routeLaneIndex];
 
@@ -537,9 +611,41 @@ function createLandingPlatforms(index, routePlan) {
 function getNextRouteLane(index, previousLaneIndex) {
   const candidates = lanePositions
     .map((_, laneIndex) => laneIndex)
-    .filter((laneIndex) => Math.abs(laneIndex - previousLaneIndex) <= 1);
+    .filter((laneIndex) => Math.abs(laneIndex - previousLaneIndex) <= 1)
+    .map((laneIndex) => {
+      const recentLanes = [1, 2, 3, 4]
+        .map((offset) => routePlans.get(index - offset)?.laneIndex)
+        .filter((recentLaneIndex) => recentLaneIndex !== undefined);
+      const previousPreviousLaneIndex = routePlans.get(index - 2)?.laneIndex;
+      const previousMove = previousPreviousLaneIndex === undefined
+        ? null
+        : previousLaneIndex - previousPreviousLaneIndex;
+      const nextMove = laneIndex - previousLaneIndex;
+      let weight = 4;
 
-  return pickSeeded(candidates, index, 17);
+      if (laneIndex === previousLaneIndex) {
+        weight -= 1.5;
+      }
+
+      if (recentLanes.slice(0, 2).every((recentLaneIndex) => recentLaneIndex === laneIndex)) {
+        weight -= 1.5;
+      }
+
+      if (previousMove !== null && nextMove === previousMove) {
+        weight -= 1;
+      }
+
+      if (recentLanes[2] === laneIndex && recentLanes[1] === previousLaneIndex) {
+        weight -= 1.25;
+      }
+
+      return {
+        value: laneIndex,
+        weight: Math.max(0.4, weight),
+      };
+    });
+
+  return getWeightedSeededCandidate(candidates, index, 17);
 }
 
 function getRoutePlan(index) {
@@ -551,6 +657,7 @@ function getRoutePlan(index) {
     routePlans.set(index, {
       color: wildcardPlatform?.nextColor ?? previousPlan.color,
       laneIndex: getNextRouteLane(index, previousPlan.laneIndex),
+      shouldCreateWildcard: shouldCreateWildcardLanding(index),
     });
   }
 
@@ -736,8 +843,12 @@ function resetGame() {
   routeSeed = createRouteSeed();
   platformLayout.clear();
   routePlans.clear();
-  routePlans.set(0, { color: 'red', laneIndex: 1 });
-  platformLayout.set(0, createLandingPlatforms(0, { color: 'red', laneIndex: 1 }));
+  routePlans.set(0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false });
+  platformLayout.set(0, createLandingPlatforms(0, {
+    color: 'red',
+    laneIndex: 1,
+    shouldCreateWildcard: false,
+  }));
   setScore(0);
   setCurrentSpeedLevel(selectedSpeedLevel);
   setBallColor('red');

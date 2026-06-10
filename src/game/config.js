@@ -1,6 +1,18 @@
 export const bestScoreStorageKey = 'bounceBuddyBestScore';
 export const speedUpScoreInterval = 10;
-export const maxRuntimeSpeedLevel = 100;
+export const unlockedLevelStorageKey = 'bounceBuddyUnlockedLevel';
+export const levelCatalog = [
+  { name: '糖霜起跳', length: 8 },
+  { name: '蓝莓弯道', length: 10 },
+  { name: '柠檬闪电', length: 12 },
+  { name: '彩虹换色站', length: 14 },
+  { name: '霓虹三连跳', length: 16 },
+  { name: '星屑横移课', length: 18 },
+  { name: '焦糖急转弯', length: 20 },
+  { name: '极光终点线', length: 22 },
+  { name: '银河弹跳杯', length: 24 },
+  { name: '宇宙冠军路', length: 26 },
+];
 
 export const lanePositions = [-2.4, 0, 2.4];
 export const platformHalfWidth = 0.86;

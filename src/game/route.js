@@ -12,6 +12,7 @@ const platformLayout = new Map([
   [0, createLandingPlatforms(0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false })],
 ]);
 const routePlans = new Map([[0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false }]]);
+const retainedRouteHistory = maxWildcardGap + 6;
 
 function createRouteSeed() {
   return Math.floor(Math.random() * 0xffffffff);
@@ -243,6 +244,29 @@ export function getLandingPlatforms(index) {
   }
 
   return platformLayout.get(index);
+}
+
+export function pruneRouteBefore(currentLandingIndex) {
+  const firstRetainedIndex = Math.max(0, currentLandingIndex - retainedRouteHistory);
+
+  for (const index of platformLayout.keys()) {
+    if (index < firstRetainedIndex) {
+      platformLayout.delete(index);
+    }
+  }
+
+  for (const index of routePlans.keys()) {
+    if (index < firstRetainedIndex) {
+      routePlans.delete(index);
+    }
+  }
+}
+
+export function getRouteCacheStats() {
+  return {
+    platformLayouts: platformLayout.size,
+    routePlans: routePlans.size,
+  };
 }
 
 export function findPlatformAt(index, x) {

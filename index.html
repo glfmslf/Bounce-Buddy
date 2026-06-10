@@ -8,6 +8,27 @@
   </head>
   <body>
     <div id="app">
+      <section class="level-select-screen" aria-label="选择关卡">
+        <div class="level-select-header">
+          <span>选择关卡</span>
+          <strong>Bounce Buddy</strong>
+          <p>通关前一关后，下一关才会解锁。</p>
+        </div>
+        <div class="mode-tabs" aria-label="选择模式">
+          <button class="mode-tab is-active" type="button" data-mode-tab="levels">普通关卡</button>
+          <button class="mode-tab" type="button" data-mode-tab="endless">无尽模式</button>
+        </div>
+        <div class="level-mode-panel is-active" data-mode-panel="levels">
+          <div class="level-grid"></div>
+        </div>
+        <div class="level-mode-panel" data-mode-panel="endless">
+          <button class="endless-entry-card" type="button">
+            <span class="level-card-index">无尽模式</span>
+            <strong class="level-card-name">星河没完没了</strong>
+            <span class="level-card-meta">没有终点；每 10 分升 1 档；速度没有上限</span>
+          </button>
+        </div>
+      </section>
       <div class="game-hud">
         <div class="score-board">
           <span>分数</span>
@@ -17,9 +38,28 @@
           <span>最佳</span>
           <strong class="best-score-value">0</strong>
         </div>
+        <div class="score-board level-board">
+          <span>关卡</span>
+          <strong class="level-value">1</strong>
+        </div>
+        <div class="score-board remaining-board">
+          <span>终点</span>
+          <strong class="remaining-value">10</strong>
+        </div>
+        <div class="score-board combo-board">
+          <span>连击</span>
+          <strong class="combo-value">0</strong>
+        </div>
         <div class="color-status" aria-label="当前小球颜色">
           <span>当前颜色</span>
           <strong class="current-color-value">红色</strong>
+        </div>
+        <div class="death-panel" aria-live="polite">
+          <span class="death-title">游戏结束</span>
+          <strong class="death-score">0</strong>
+          <span class="death-reason">没有落到平台</span>
+          <span class="death-best">最佳 0</span>
+          <button class="death-levels-button" type="button">返回选关</button>
         </div>
         <p class="game-message">只能落到同色平台；彩虹平台会换色</p>
         <button class="start-button" type="button">开始游戏</button>
@@ -38,6 +78,14 @@
             <option value="10">10 档</option>
           </select>
         </div>
+      </div>
+      <div class="level-complete-panel" aria-live="polite">
+        <span class="level-complete-kicker">关卡完成</span>
+        <strong class="level-complete-title">第 1 关</strong>
+        <span class="level-complete-detail">下一关 13 跳到终点</span>
+        <span class="level-complete-score">当前分数 0</span>
+        <button class="next-level-button" type="button">进入下一关</button>
+        <button class="back-to-levels-button" type="button">返回选关</button>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

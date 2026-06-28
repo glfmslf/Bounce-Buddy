@@ -1,17 +1,19 @@
 export const bestScoreStorageKey = 'bounceBuddyBestScore';
+export const tutorialSeenStorageKey = 'bounceBuddyTutorialSeen';
 export const speedUpScoreInterval = 10;
 export const unlockedLevelStorageKey = 'bounceBuddyUnlockedLevel';
+export const levelStarsStorageKey = 'bounceBuddyLevelStars';
 export const levelCatalog = [
-  { name: '糖霜起跳', length: 8 },
-  { name: '蓝莓弯道', length: 10 },
-  { name: '柠檬闪电', length: 12 },
-  { name: '彩虹换色站', length: 14 },
-  { name: '霓虹三连跳', length: 16 },
-  { name: '星屑横移课', length: 18 },
-  { name: '焦糖急转弯', length: 20 },
-  { name: '极光终点线', length: 22 },
-  { name: '银河弹跳杯', length: 24 },
-  { name: '宇宙冠军路', length: 26 },
+  { name: '\u7cd6\u971c\u8d77\u8df3', length: 8, mission: { type: 'perfect', target: 4 } },
+  { name: '\u84dd\u8393\u5f2f\u9053', length: 10, mission: { type: 'perfect', target: 6 } },
+  { name: '\u67e0\u6aac\u95ea\u7535', length: 12, mission: { type: 'perfect', target: 8 } },
+  { name: '\u5f69\u8679\u6362\u8272\u7ad9', length: 14, mission: { type: 'rainbow', target: 2 } },
+  { name: '\u9713\u8679\u4e09\u8fde\u8df3', length: 16, mission: { type: 'perfect', target: 11 } },
+  { name: '\u661f\u5c51\u6a2a\u79fb\u8bfe', length: 18, mission: { type: 'rainbow', target: 3 } },
+  { name: '\u7126\u7cd6\u6025\u8f6c\u5f2f', length: 20, mission: { type: 'perfect', target: 14 } },
+  { name: '\u6781\u5149\u7ec8\u70b9\u7ebf', length: 22, mission: { type: 'rainbow', target: 3 } },
+  { name: '\u94f6\u6cb3\u5f39\u8df3\u676f', length: 24, mission: { type: 'perfect', target: 18 } },
+  { name: '\u5b87\u5b99\u51a0\u519b\u8def', length: 26, mission: { type: 'rainbow', target: 4 } },
 ];
 
 export const lanePositions = [-2.4, 0, 2.4];

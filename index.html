@@ -14,6 +14,11 @@
           <strong>Bounce Buddy</strong>
           <p>通关前一关后，下一关才会解锁。</p>
         </div>
+        <div class="rules-panel" aria-label="玩法提示">
+          <span>玩法提示</span>
+          <p>只能落到同色平台；彩虹平台会改变小球颜色。</p>
+          <p>用 A/D、方向键、左右按钮或滑动来移动。</p>
+        </div>
         <div class="mode-tabs" aria-label="选择模式">
           <button class="mode-tab is-active" type="button" data-mode-tab="levels">普通关卡</button>
           <button class="mode-tab" type="button" data-mode-tab="endless">无尽模式</button>
@@ -50,9 +55,24 @@
           <span>连击</span>
           <strong class="combo-value">0</strong>
         </div>
+        <div class="score-board perfect-board">
+          <span>Perfect</span>
+          <strong class="perfect-value">0</strong>
+        </div>
+        <div class="score-board mission-board">
+          <span>任务</span>
+          <strong class="mission-value">0/0</strong>
+        </div>
         <div class="color-status" aria-label="当前小球颜色">
           <span>当前颜色</span>
           <strong class="current-color-value">红色</strong>
+        </div>
+        <div class="run-progress" aria-label="关卡进度">
+          <span class="progress-label">终点进度</span>
+          <strong class="progress-text">0/8 跳</strong>
+          <div class="progress-track" aria-hidden="true">
+            <div class="progress-fill"></div>
+          </div>
         </div>
         <div class="death-panel" aria-live="polite">
           <span class="death-title">游戏结束</span>
@@ -63,6 +83,7 @@
         </div>
         <p class="game-message">只能落到同色平台；彩虹平台会换色</p>
         <button class="start-button" type="button">开始游戏</button>
+        <button class="pause-button" type="button" aria-pressed="false">暂停</button>
         <div class="speed-control" aria-label="选择起始速度">
           <span>当前速度 <strong class="speed-value">5</strong></span>
           <select class="speed-select" aria-label="起始速度档位">
@@ -83,9 +104,29 @@
         <span class="level-complete-kicker">关卡完成</span>
         <strong class="level-complete-title">第 1 关</strong>
         <span class="level-complete-detail">下一关 13 跳到终点</span>
+        <span class="level-complete-stars" aria-label="本关星级">☆☆☆</span>
+        <span class="level-complete-mission">任务 0/0</span>
         <span class="level-complete-score">当前分数 0</span>
         <button class="next-level-button" type="button">进入下一关</button>
         <button class="back-to-levels-button" type="button">返回选关</button>
+      </div>
+      <div class="pause-panel" aria-live="polite">
+        <span class="pause-kicker">暂停中</span>
+        <strong class="pause-title">喘口气</strong>
+        <span class="pause-detail">继续时会从当前跳点接着跑。</span>
+        <button class="resume-button" type="button">继续</button>
+        <button class="pause-retry-button" type="button">重试本局</button>
+        <button class="pause-levels-button" type="button">返回选关</button>
+      </div>
+      <div class="coach-tip" aria-live="polite">
+        <strong>先看颜色，再跳</strong>
+        <span>目标是落到和小球同色的平台；彩虹平台会帮你换色。</span>
+        <span>左右滑动、点底部按钮，或按 A/D 来换道。</span>
+        <button class="coach-dismiss-button" type="button">知道了</button>
+      </div>
+      <div class="touch-controls" aria-label="移动控制">
+        <button class="touch-control-button" type="button" data-move="-1" aria-label="向左移动">&#8592;</button>
+        <button class="touch-control-button" type="button" data-move="1" aria-label="向右移动">&#8594;</button>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

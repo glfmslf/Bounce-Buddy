@@ -8,10 +8,12 @@ import {
   landingGap,
   lanePositions,
   levelCatalog,
+  levelStarsStorageKey,
   nearZ,
   platformHalfWidth,
   speedUpScoreInterval,
   starPaletteHex,
+  tutorialSeenStorageKey,
   unlockedLevelStorageKey,
   visibleLandingCount,
 } from './game/config.js';
@@ -37,6 +39,9 @@ const levelGrid = document.querySelector('.level-grid');
 const modeTabs = document.querySelectorAll('.mode-tab');
 const modePanels = document.querySelectorAll('.level-mode-panel');
 const endlessEntryCard = document.querySelector('.endless-entry-card');
+const touchControlButtons = document.querySelectorAll('.touch-control-button');
+const coachTip = document.querySelector('.coach-tip');
+const coachDismissButton = document.querySelector('.coach-dismiss-button');
 const startButton = document.querySelector('.start-button');
 const speedSelect = document.querySelector('.speed-select');
 const speedValue = document.querySelector('.speed-value');
@@ -45,9 +50,20 @@ const bestScoreValue = document.querySelector('.best-score-value');
 const levelValue = document.querySelector('.level-value');
 const remainingValue = document.querySelector('.remaining-value');
 const comboValue = document.querySelector('.combo-value');
+const perfectValue = document.querySelector('.perfect-value');
+const missionValue = document.querySelector('.mission-value');
 const currentColorValue = document.querySelector('.current-color-value');
+const progressLabel = document.querySelector('.progress-label');
+const progressText = document.querySelector('.progress-text');
+const progressFill = document.querySelector('.progress-fill');
+const pauseButton = document.querySelector('.pause-button');
+const resumeButton = document.querySelector('.resume-button');
+const pauseRetryButton = document.querySelector('.pause-retry-button');
+const pauseLevelsButton = document.querySelector('.pause-levels-button');
 const levelCompleteTitle = document.querySelector('.level-complete-title');
 const levelCompleteDetail = document.querySelector('.level-complete-detail');
+const levelCompleteStars = document.querySelector('.level-complete-stars');
+const levelCompleteMission = document.querySelector('.level-complete-mission');
 const levelCompleteScore = document.querySelector('.level-complete-score');
 const nextLevelButton = document.querySelector('.next-level-button');
 const backToLevelsButton = document.querySelector('.back-to-levels-button');
@@ -57,11 +73,15 @@ const deathReason = document.querySelector('.death-reason');
 const deathBest = document.querySelector('.death-best');
 const gameMessage = document.querySelector('.game-message');
 let isGameRunning = false;
+let isPaused = false;
 let isGameOver = false;
 let isLevelComplete = false;
 let currentMode = 'level';
 let selectedSpeedLevel = Number(speedSelect.value);
 let currentSpeedLevel = selectedSpeedLevel;
+let hasSeenTutorial = readTutorialSeen();
+let pointerStartX = null;
+let pointerStartY = null;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07111f);
@@ -323,8 +343,12 @@ let currentLevel = 1;
 let levelStartLanding = 0;
 let levelEndLanding = levelCatalog[0].length;
 let combo = 0;
+let maxCombo = 0;
+let perfectCount = 0;
+let rainbowCount = 0;
 let completedLanding = 0;
 let unlockedLevel = readUnlockedLevel();
+let levelStars = readLevelStars();
 
 function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
@@ -349,6 +373,7 @@ function setSpeedLevel(level) {
 function setScore(value) {
   score = value;
   scoreValue.textContent = String(score);
+  updateRunProgress();
 }
 
 function getLevelBaseSpeed(level) {
@@ -371,18 +396,94 @@ function getLevelLength(level) {
 }
 
 function getLevelName(level) {
-  return levelCatalog[level - 1]?.name ?? `隐藏弹跳 ${level}`;
+  return levelCatalog[level - 1]?.name ?? `未命名关卡 ${level}`;
 }
 
 function setCombo(value) {
   combo = value;
+  maxCombo = Math.max(maxCombo, combo);
   comboValue.textContent = String(combo);
+}
+
+function setPerfectCount(value) {
+  perfectCount = value;
+  perfectValue.textContent = String(perfectCount);
+  updateMissionHud();
+}
+
+function setRainbowCount(value) {
+  rainbowCount = value;
+  updateMissionHud();
+}
+
+function getLevelMission(level) {
+  return levelCatalog[level - 1]?.mission ?? { type: 'perfect', target: 1 };
+}
+
+function getMissionName(mission = getLevelMission(currentLevel)) {
+  return mission.type === 'rainbow' ? '\u5f69\u8679' : 'Perfect';
+}
+
+function getMissionProgress(mission = getLevelMission(currentLevel)) {
+  return mission.type === 'rainbow' ? rainbowCount : perfectCount;
+}
+
+function getMissionTarget(mission = getLevelMission(currentLevel)) {
+  return Math.max(1, Math.floor(Number(mission.target) || 1));
+}
+
+function isMissionComplete(mission = getLevelMission(currentLevel)) {
+  return getMissionProgress(mission) >= getMissionTarget(mission);
+}
+
+function getMissionSummary(level = currentLevel) {
+  const mission = getLevelMission(level);
+  return `${getMissionName(mission)} ${getMissionTarget(mission)}`;
+}
+
+function getMissionProgressText(mission = getLevelMission(currentLevel)) {
+  const progress = Math.min(getMissionProgress(mission), getMissionTarget(mission));
+  return `${getMissionName(mission)} ${progress}/${getMissionTarget(mission)}`;
+}
+
+function updateMissionHud() {
+  missionValue.textContent = currentMode === 'endless' ? '--' : getMissionProgressText();
+  missionValue.classList.toggle('is-complete', currentMode !== 'endless' && isMissionComplete());
+}
+function updateRunProgress(currentLandingIndex = Math.floor(hopProgress)) {
+  if (!progressFill) {
+    return;
+  }
+
+  if (currentMode === 'endless') {
+    const speedStepProgress = score % speedUpScoreInterval;
+    const pointsToNextSpeed = speedUpScoreInterval - speedStepProgress;
+    const progressPercent = (speedStepProgress / speedUpScoreInterval) * 100;
+
+    progressLabel.textContent = '下次提速';
+    progressText.textContent = `还差 ${pointsToNextSpeed} 分`;
+    progressFill.style.width = `${progressPercent}%`;
+    return;
+  }
+
+  const totalJumps = getLevelLength(currentLevel);
+  const completedJumps = THREE.MathUtils.clamp(
+    currentLandingIndex - levelStartLanding,
+    0,
+    totalJumps
+  );
+  const progressPercent = totalJumps > 0 ? (completedJumps / totalJumps) * 100 : 0;
+
+  progressLabel.textContent = '终点进度';
+  progressText.textContent = `${completedJumps}/${totalJumps} 跳`;
+  progressFill.style.width = `${progressPercent}%`;
 }
 
 function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
   if (currentMode === 'endless') {
     levelValue.textContent = '无尽';
     remainingValue.textContent = '∞';
+    updateRunProgress(currentLandingIndex);
     return;
   }
 
@@ -390,13 +491,144 @@ function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
 
   levelValue.textContent = String(currentLevel);
   remainingValue.textContent = String(remainingJumps);
+  updateRunProgress(currentLandingIndex);
 }
 
 function startLevel(level, startLandingIndex) {
   currentLevel = level;
   levelStartLanding = startLandingIndex;
   levelEndLanding = levelStartLanding + getLevelLength(currentLevel);
+  maxCombo = 0;
+  setPerfectCount(0);
+  setRainbowCount(0);
+  updateMissionHud();
   updateLevelHud(startLandingIndex);
+}
+
+
+function readTutorialSeen() {
+  try {
+    return localStorage.getItem(tutorialSeenStorageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function setTutorialSeen() {
+  hasSeenTutorial = true;
+
+  try {
+    localStorage.setItem(tutorialSeenStorageKey, 'true');
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+}
+
+function showCoachTipIfNeeded() {
+  coachTip.classList.toggle('is-visible', !hasSeenTutorial);
+}
+
+function hideCoachTip({ persist = false } = {}) {
+  coachTip.classList.remove('is-visible');
+
+  if (persist) {
+    setTutorialSeen();
+  }
+}
+function clearPauseState() {
+  isPaused = false;
+  document.body.classList.remove('is-paused');
+  pauseButton.textContent = '暂停';
+  pauseButton.setAttribute('aria-pressed', 'false');
+}
+
+function setPaused(paused) {
+  if (!isGameRunning || isGameOver || isLevelComplete) {
+    return;
+  }
+
+  isPaused = paused;
+  document.body.classList.toggle('is-paused', isPaused);
+  pauseButton.textContent = isPaused ? '\u5df2\u6682\u505c' : '\u6682\u505c';
+  pauseButton.setAttribute('aria-pressed', String(isPaused));
+}
+
+function togglePause() {
+  setPaused(!isPaused);
+}
+
+function normalizeStars(stars) {
+  const numericStars = Number(stars);
+
+  if (!Number.isFinite(numericStars)) {
+    return 0;
+  }
+
+  return THREE.MathUtils.clamp(Math.floor(numericStars), 0, 3);
+}
+
+function getStarText(stars) {
+  const normalizedStars = normalizeStars(stars);
+  return '\u2605'.repeat(normalizedStars) + '\u2606'.repeat(3 - normalizedStars);
+}
+
+function getLevelStars(level) {
+  return levelStars[level] ?? 0;
+}
+
+function readLevelStars() {
+  try {
+    const parsedStars = JSON.parse(localStorage.getItem(levelStarsStorageKey) ?? '{}');
+
+    if (!parsedStars || typeof parsedStars !== 'object' || Array.isArray(parsedStars)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsedStars).map(([level, stars]) => [
+        String(level),
+        normalizeStars(stars),
+      ])
+    );
+  } catch {
+    return {};
+  }
+}
+
+function setLevelStars(level, stars) {
+  const normalizedStars = normalizeStars(stars);
+
+  if (normalizedStars <= getLevelStars(level)) {
+    return false;
+  }
+
+  levelStars = {
+    ...levelStars,
+    [level]: normalizedStars,
+  };
+
+  try {
+    localStorage.setItem(levelStarsStorageKey, JSON.stringify(levelStars));
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+
+  renderLevelSelect();
+  return true;
+}
+
+function calculateLevelStars(level) {
+  const levelLength = getLevelLength(level);
+
+  if (perfectCount >= Math.ceil(levelLength * 0.8)) {
+    return 3;
+  }
+
+  if (perfectCount >= Math.ceil(levelLength * 0.5)) {
+    return 2;
+  }
+
+  return 1;
 }
 
 function readUnlockedLevel() {
@@ -435,6 +667,8 @@ function renderLevelSelect() {
     button.innerHTML = `
       <span class="level-card-index">第 ${levelNumber} 关</span>
       <strong class="level-card-name">${level.name}</strong>
+      <span class="level-card-stars" aria-label="最高星级 ${getLevelStars(levelNumber)} 星">${getStarText(getLevelStars(levelNumber))}</span>
+      <span class="level-card-mission">任务：${getMissionSummary(levelNumber)}</span>
       <span class="level-card-meta ${isUnlocked ? '' : 'level-card-lock'}">
         ${isUnlocked ? `${level.length} 跳到终点` : '先通关前一关'}
       </span>
@@ -461,12 +695,16 @@ function setLevelSelectMode(mode) {
 function completeLevel(landingIndex) {
   isGameRunning = false;
   isLevelComplete = true;
+  clearPauseState();
   completedLanding = landingIndex;
   updateLevelHud(landingIndex);
 
   const nextLevel = currentLevel + 1;
   const hasNextLevel = nextLevel <= levelCatalog.length;
   const completedLevel = currentLevel;
+  const earnedStars = calculateLevelStars(completedLevel);
+  const previousStars = getLevelStars(completedLevel);
+  const didImproveStars = setLevelStars(completedLevel, earnedStars);
 
   if (hasNextLevel && unlockedLevel < nextLevel) {
     setUnlockedLevel(nextLevel);
@@ -476,9 +714,21 @@ function completeLevel(landingIndex) {
   levelCompleteDetail.textContent = hasNextLevel
     ? `解锁「${getLevelName(nextLevel)}」：${getLevelLength(nextLevel)} 跳到终点`
     : '全部关卡已完成';
-  levelCompleteScore.textContent = `当前分数 ${score}`;
+  levelCompleteStars.textContent = getStarText(earnedStars);
+  levelCompleteStars.setAttribute(
+    'aria-label',
+    `\u672c\u6b21\u83b7\u5f97 ${earnedStars} \u661f\uff0c\u5386\u53f2\u6700\u9ad8 ${Math.max(previousStars, earnedStars)} \u661f`
+  );
+  levelCompleteMission.textContent = isMissionComplete()
+    ? `\u4efb\u52a1\u5b8c\u6210\uff1a${getMissionProgressText()}`
+    : `\u4efb\u52a1\u672a\u5b8c\u6210\uff1a${getMissionProgressText()}`;
+  const perfectSummary = `Perfect ${perfectCount}/${getLevelLength(completedLevel)}`;
+  levelCompleteScore.textContent = didImproveStars
+    ? `\u65b0\u661f\u7ea7\u7eaa\u5f55\uff01${perfectSummary}`
+    : `${perfectSummary} \u00b7 \u6700\u9ad8\u8fde\u51fb ${maxCombo}`;
   nextLevelButton.textContent = hasNextLevel ? '进入下一关' : '回到选关';
   gameMessage.textContent = `「${getLevelName(completedLevel)}」完成`;
+  hideCoachTip();
   document.body.classList.add('is-level-complete');
 }
 
@@ -494,6 +744,7 @@ function continueToNextLevel() {
 
   isLevelComplete = false;
   isGameRunning = true;
+  clearPauseState();
   startLevel(currentLevel + 1, completedLanding);
   setCombo(0);
   updateSpeedForScore(score);
@@ -544,7 +795,7 @@ function getCurrentLaneIndex() {
 }
 
 function shiftTargetLane(direction) {
-  if (!isGameRunning || isGameOver || isLevelComplete) {
+  if (!isGameRunning || isPaused || isGameOver || isLevelComplete) {
     return;
   }
 
@@ -572,6 +823,7 @@ function startRun(level = 1, mode = 'level') {
   isGameOver = false;
   isLevelComplete = false;
   currentMode = mode;
+  clearPauseState();
   hopProgress = 0;
   previousHop = 0;
   lastProcessedLanding = 0;
@@ -587,6 +839,7 @@ function startRun(level = 1, mode = 'level') {
   gameMessage.textContent = currentMode === 'endless'
     ? '星河没完没了：没有终点，每 10 分升 1 档'
     : `${getLevelName(currentLevel)}：还剩 ${getLevelLength(currentLevel)} 跳`;
+  showCoachTipIfNeeded();
   document.body.classList.add('is-playing');
   document.body.classList.remove('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -607,12 +860,14 @@ function showLevelSelect() {
   isGameRunning = false;
   isGameOver = false;
   isLevelComplete = false;
+  clearPauseState();
   document.body.classList.remove('is-playing');
   document.body.classList.remove('is-game-over');
   document.body.classList.remove('is-level-complete');
   speedSelect.disabled = false;
   startButton.textContent = '开始游戏';
   startButton.classList.remove('is-running');
+  hideCoachTip();
   renderLevelSelect();
 }
 
@@ -620,11 +875,13 @@ function endGame(reason = '') {
   isGameRunning = false;
   isGameOver = true;
   isLevelComplete = false;
+  clearPauseState();
   document.body.classList.add('is-game-over');
   document.body.classList.remove('is-level-complete');
   speedSelect.disabled = false;
   startButton.textContent = '再来一次';
   startButton.classList.remove('is-running');
+  hideCoachTip();
   setCombo(0);
 
   const finalMessage = reason || '游戏结束';
@@ -682,7 +939,39 @@ deathLevelsButton.addEventListener('click', () => {
   showLevelSelect();
 });
 
+coachDismissButton.addEventListener('click', () => {
+  hideCoachTip({ persist: true });
+});
+
+pauseButton.addEventListener('click', () => {
+  togglePause();
+});
+
+resumeButton.addEventListener('click', () => {
+  setPaused(false);
+});
+
+pauseRetryButton.addEventListener('click', () => {
+  startRun(currentLevel, currentMode);
+});
+
+pauseLevelsButton.addEventListener('click', () => {
+  showLevelSelect();
+});
+
+touchControlButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    shiftTargetLane(Number(button.dataset.move));
+  });
+});
+
 window.addEventListener('keydown', (event) => {
+  if (event.code === 'Escape') {
+    event.preventDefault();
+    togglePause();
+    return;
+  }
+
   if (event.repeat) {
     return;
   }
@@ -694,6 +983,28 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'ArrowRight' || event.code === 'KeyD') {
     shiftTargetLane(1);
   }
+});
+
+renderer.domElement.addEventListener('pointerdown', (event) => {
+  pointerStartX = event.clientX;
+  pointerStartY = event.clientY;
+});
+
+renderer.domElement.addEventListener('pointerup', (event) => {
+  if (pointerStartX === null || pointerStartY === null) {
+    return;
+  }
+
+  const deltaX = event.clientX - pointerStartX;
+  const deltaY = event.clientY - pointerStartY;
+  pointerStartX = null;
+  pointerStartY = null;
+
+  if (Math.abs(deltaX) < 38 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) {
+    return;
+  }
+
+  shiftTargetLane(deltaX > 0 ? 1 : -1);
 });
 
 function animate() {
@@ -729,7 +1040,7 @@ function animate() {
 
   const currentLanding = Math.floor(hopProgress);
 
-  while (isGameRunning && lastProcessedLanding < currentLanding) {
+  while (isGameRunning && !isPaused && lastProcessedLanding < currentLanding) {
     const landingIndex = lastProcessedLanding + 1;
     const landingZ = nearZ - landingIndex * landingGap;
     const platform = findPlatformAt(landingIndex, ballX);
@@ -745,12 +1056,19 @@ function animate() {
     if (landed) {
       setScore(score + 1);
       setCombo(combo + 1);
+      const isPerfectLanding = Math.abs(ballX - platform.x) < 0.36;
+      if (isPerfectLanding) {
+        setPerfectCount(perfectCount + 1);
+      }
       updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
-        gameMessage.textContent = `彩虹换色：${gameColors[platform.nextColor].label}`;
+        setRainbowCount(rainbowCount + 1);
+        gameMessage.textContent = isPerfectLanding
+          ? `Perfect! \u5f69\u8679\u6362\u8272\uff1a${gameColors[platform.nextColor].label}`
+          : `\u5f69\u8679\u6362\u8272\uff1a${gameColors[platform.nextColor].label}`;
       } else {
-        gameMessage.textContent = Math.abs(ballX - platform.x) < 0.36 ? 'Perfect!' : '命中平台';
+        gameMessage.textContent = isPerfectLanding ? 'Perfect!' : '\u547d\u4e2d\u5e73\u53f0';
       }
 
       if (currentMode === 'level' && landingIndex >= levelEndLanding) {
@@ -780,17 +1098,23 @@ function animate() {
     currentMode,
     currentLevel,
     isLevelComplete,
+    isPaused,
     levelEndLanding,
     remainingToGoal: Math.max(0, levelEndLanding - currentLanding),
     combo,
+    maxCombo,
+    perfectCount,
+    rainbowCount,
+    mission: getMissionProgressText(),
+    missionComplete: currentMode !== 'endless' && isMissionComplete(),
     routeSeed: getRouteSeed(),
     routeCache: getRouteCacheStats(),
     landingPadPoolSize: landingPads.length,
   };
 
-  targetMarker.visible = isGameRunning && !isLevelComplete;
+  targetMarker.visible = isGameRunning && !isPaused && !isLevelComplete;
   targetMarker.position.set(targetBallX, 0.13, nextPadZ);
-  targetMarker.material.opacity = isGameRunning ? 0.68 + bounce * 0.22 : 0;
+  targetMarker.material.opacity = isGameRunning && !isPaused ? 0.68 + bounce * 0.22 : 0;
   targetMarker.material.color.setHex(targetWillLand ? 0x91f7ff : 0xff6fa3);
   targetMarker.scale.setScalar(1 + bounce * 0.18);
 
@@ -835,7 +1159,9 @@ function animate() {
 
   for (let i = impactEffects.length - 1; i >= 0; i -= 1) {
     const effect = impactEffects[i];
-    effect.age += delta;
+    if (!isPaused) {
+      effect.age += delta;
+    }
     const progress = effect.age / effect.duration;
     const opacity = Math.max(0, 1 - progress);
 

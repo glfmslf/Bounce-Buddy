@@ -33,6 +33,7 @@ import {
   applyPlatformVisual,
   createLandingPads,
 } from './scene/platforms.js';
+import { withComboFeedback } from './game/comboFeedback.js';
 
 const app = document.querySelector('#app');
 const levelGrid = document.querySelector('.level-grid');
@@ -49,6 +50,7 @@ const scoreValue = document.querySelector('.score-value');
 const bestScoreValue = document.querySelector('.best-score-value');
 const levelValue = document.querySelector('.level-value');
 const remainingValue = document.querySelector('.remaining-value');
+const comboBoard = document.querySelector('.combo-board');
 const comboValue = document.querySelector('.combo-value');
 const perfectValue = document.querySelector('.perfect-value');
 const missionValue = document.querySelector('.mission-value');
@@ -68,9 +70,13 @@ const levelCompleteScore = document.querySelector('.level-complete-score');
 const nextLevelButton = document.querySelector('.next-level-button');
 const backToLevelsButton = document.querySelector('.back-to-levels-button');
 const deathLevelsButton = document.querySelector('.death-levels-button');
+const deathRetryButton = document.querySelector('.death-retry-button');
 const deathScore = document.querySelector('.death-score');
 const deathReason = document.querySelector('.death-reason');
 const deathBest = document.querySelector('.death-best');
+const deathCombo = document.querySelector('.death-combo');
+const deathPerfect = document.querySelector('.death-perfect');
+const deathMission = document.querySelector('.death-mission');
 const gameMessage = document.querySelector('.game-message');
 let isGameRunning = false;
 let isPaused = false;
@@ -399,10 +405,21 @@ function getLevelName(level) {
   return levelCatalog[level - 1]?.name ?? `未命名关卡 ${level}`;
 }
 
+function pulseComboHud(value) {
+  comboBoard.classList.toggle('is-combo-hot', value >= 5);
+  comboValue.classList.remove('is-combo-pop');
+  void comboValue.offsetWidth;
+
+  if (value > 0) {
+    comboValue.classList.add('is-combo-pop');
+  }
+}
+
 function setCombo(value) {
   combo = value;
   maxCombo = Math.max(maxCombo, combo);
   comboValue.textContent = String(combo);
+  pulseComboHud(combo);
 }
 
 function setPerfectCount(value) {
@@ -899,6 +916,9 @@ function endGame(reason = '') {
 
   deathScore.textContent = String(score);
   deathBest.textContent = `最佳 ${bestScore}`;
+  deathCombo.textContent = String(maxCombo);
+  deathPerfect.textContent = String(perfectCount);
+  deathMission.textContent = currentMode === 'endless' ? '无尽' : getMissionProgressText();
 }
 
 bestScoreValue.textContent = String(bestScore);
@@ -933,6 +953,10 @@ nextLevelButton.addEventListener('click', () => {
 
 backToLevelsButton.addEventListener('click', () => {
   showLevelSelect();
+});
+
+deathRetryButton.addEventListener('click', () => {
+  startRun(currentLevel, currentMode);
 });
 
 deathLevelsButton.addEventListener('click', () => {
@@ -1011,11 +1035,13 @@ function animate() {
   timer.update();
   const delta = timer.getDelta();
 
-  if (isGameRunning) {
+  if (isGameRunning && !isPaused) {
     hopProgress += hopRate * delta;
   }
 
-  ballX = THREE.MathUtils.lerp(ballX, targetBallX, 0.2);
+  if (!isPaused) {
+    ballX = THREE.MathUtils.lerp(ballX, targetBallX, 0.2);
+  }
 
   const hop = hopProgress % 1;
   const bounce = Math.sin(hop * Math.PI);
@@ -1064,11 +1090,13 @@ function animate() {
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
         setRainbowCount(rainbowCount + 1);
-        gameMessage.textContent = isPerfectLanding
-          ? `Perfect! \u5f69\u8679\u6362\u8272\uff1a${gameColors[platform.nextColor].label}`
-          : `\u5f69\u8679\u6362\u8272\uff1a${gameColors[platform.nextColor].label}`;
+        const landingMessage = isPerfectLanding
+          ? `Perfect! 彩虹换色：${gameColors[platform.nextColor].label}`
+          : `彩虹换色：${gameColors[platform.nextColor].label}`;
+        gameMessage.textContent = withComboFeedback(landingMessage, combo);
       } else {
-        gameMessage.textContent = isPerfectLanding ? 'Perfect!' : '\u547d\u4e2d\u5e73\u53f0';
+        const landingMessage = isPerfectLanding ? 'Perfect!' : '命中平台';
+        gameMessage.textContent = withComboFeedback(landingMessage, combo);
       }
 
       if (currentMode === 'level' && landingIndex >= levelEndLanding) {

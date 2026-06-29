@@ -7,11 +7,12 @@ import {
   platformHalfWidth,
 } from './config.js';
 
+const startingRoutePlan = { color: 'red', laneIndex: 1, shouldCreateWildcard: false };
 let routeSeed = createRouteSeed();
 const platformLayout = new Map([
-  [0, createLandingPlatforms(0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false })],
+  [0, createLandingPlatforms(0, startingRoutePlan)],
 ]);
-const routePlans = new Map([[0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false }]]);
+const routePlans = new Map([[0, startingRoutePlan]]);
 const retainedRouteHistory = maxWildcardGap + 6;
 
 function createRouteSeed() {
@@ -211,6 +212,11 @@ function getNextRouteLane(index, previousLaneIndex) {
 }
 
 function getRoutePlan(index) {
+  if (index <= 0) {
+    routePlans.set(0, startingRoutePlan);
+    return startingRoutePlan;
+  }
+
   if (!routePlans.has(index)) {
     const previousPlan = getRoutePlan(index - 1);
     const previousPlatforms = getLandingPlatforms(index - 1);
@@ -230,15 +236,19 @@ export function resetRoute() {
   routeSeed = createRouteSeed();
   platformLayout.clear();
   routePlans.clear();
-  routePlans.set(0, { color: 'red', laneIndex: 1, shouldCreateWildcard: false });
-  platformLayout.set(0, createLandingPlatforms(0, {
-    color: 'red',
-    laneIndex: 1,
-    shouldCreateWildcard: false,
-  }));
+  routePlans.set(0, startingRoutePlan);
+  platformLayout.set(0, createLandingPlatforms(0, startingRoutePlan));
 }
 
 export function getLandingPlatforms(index) {
+  if (index <= 0) {
+    if (!platformLayout.has(0)) {
+      platformLayout.set(0, createLandingPlatforms(0, startingRoutePlan));
+    }
+
+    return platformLayout.get(0);
+  }
+
   if (!platformLayout.has(index)) {
     platformLayout.set(index, createLandingPlatforms(index, getRoutePlan(index)));
   }
@@ -250,13 +260,13 @@ export function pruneRouteBefore(currentLandingIndex) {
   const firstRetainedIndex = Math.max(0, currentLandingIndex - retainedRouteHistory);
 
   for (const index of platformLayout.keys()) {
-    if (index < firstRetainedIndex) {
+    if (index > 0 && index < firstRetainedIndex) {
       platformLayout.delete(index);
     }
   }
 
   for (const index of routePlans.keys()) {
-    if (index < firstRetainedIndex) {
+    if (index > 0 && index < firstRetainedIndex) {
       routePlans.delete(index);
     }
   }

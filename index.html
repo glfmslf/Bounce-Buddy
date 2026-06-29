@@ -79,7 +79,15 @@
           <strong class="death-score">0</strong>
           <span class="death-reason">没有落到平台</span>
           <span class="death-best">最佳 0</span>
-          <button class="death-levels-button" type="button">返回选关</button>
+          <div class="death-summary" aria-label="本局总结">
+            <span>最高连击 <strong class="death-combo">0</strong></span>
+            <span>Perfect <strong class="death-perfect">0</strong></span>
+            <span>任务 <strong class="death-mission">--</strong></span>
+          </div>
+          <div class="death-actions">
+            <button class="death-retry-button" type="button">重试本局</button>
+            <button class="death-levels-button" type="button">返回选关</button>
+          </div>
         </div>
         <p class="game-message">只能落到同色平台；彩虹平台会换色</p>
         <button class="start-button" type="button">开始游戏</button>

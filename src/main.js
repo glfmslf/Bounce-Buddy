@@ -34,6 +34,11 @@ import {
   createLandingPads,
 } from './scene/platforms.js';
 import { withComboFeedback } from './game/comboFeedback.js';
+import {
+  didSpeedIncrease,
+  getScoreSpeedBonus,
+  withSpeedUpFeedback,
+} from './game/speedFeedback.js';
 
 const app = document.querySelector('#app');
 const levelGrid = document.querySelector('.level-grid');
@@ -45,6 +50,7 @@ const coachTip = document.querySelector('.coach-tip');
 const coachDismissButton = document.querySelector('.coach-dismiss-button');
 const startButton = document.querySelector('.start-button');
 const speedSelect = document.querySelector('.speed-select');
+const speedControl = document.querySelector('.speed-control');
 const speedValue = document.querySelector('.speed-value');
 const scoreValue = document.querySelector('.score-value');
 const bestScoreValue = document.querySelector('.best-score-value');
@@ -85,6 +91,7 @@ let isLevelComplete = false;
 let currentMode = 'level';
 let selectedSpeedLevel = Number(speedSelect.value);
 let currentSpeedLevel = selectedSpeedLevel;
+let speedPulseTimeoutId = null;
 let hasSeenTutorial = readTutorialSeen();
 let pointerStartX = null;
 let pointerStartY = null;
@@ -364,16 +371,52 @@ function updateSpeedDisplay(level) {
   speedValue.textContent = String(level);
 }
 
-function setCurrentSpeedLevel(level) {
-  currentSpeedLevel = Math.max(1, Math.floor(level));
+function clearSpeedHudPulse() {
+  if (speedPulseTimeoutId !== null) {
+    window.clearTimeout(speedPulseTimeoutId);
+    speedPulseTimeoutId = null;
+  }
+
+  speedControl.classList.remove('is-speed-hot');
+  speedValue.classList.remove('is-speed-pop');
+}
+
+function pulseSpeedHud(didSpeedGoUp) {
+  if (!didSpeedGoUp) {
+    return;
+  }
+
+  clearSpeedHudPulse();
+  speedControl.classList.add('is-speed-hot');
+  void speedValue.offsetWidth;
+  speedValue.classList.add('is-speed-pop');
+
+  speedPulseTimeoutId = window.setTimeout(() => {
+    speedControl.classList.remove('is-speed-hot');
+    speedPulseTimeoutId = null;
+  }, 420);
+}
+
+function setCurrentSpeedLevel(level, { pulse = true } = {}) {
+  const nextSpeedLevel = Math.max(1, Math.floor(level));
+  const didSpeedGoUp = didSpeedIncrease(currentSpeedLevel, nextSpeedLevel);
+  currentSpeedLevel = nextSpeedLevel;
   hopRate = speedLevelToHopRate(currentSpeedLevel);
   updateSpeedDisplay(currentSpeedLevel);
+
+  if (pulse) {
+    pulseSpeedHud(didSpeedGoUp);
+  } else {
+    clearSpeedHudPulse();
+  }
+
+  return didSpeedGoUp;
 }
 
 function setSpeedLevel(level) {
   selectedSpeedLevel = THREE.MathUtils.clamp(level, 1, 10);
   speedSelect.value = String(selectedSpeedLevel);
-  setCurrentSpeedLevel(getLevelBaseSpeed(currentLevel));
+  setCurrentSpeedLevel(isGameRunning ? getLevelBaseSpeed(currentLevel) : selectedSpeedLevel);
 }
 
 function setScore(value) {
@@ -393,8 +436,8 @@ function getLevelBaseSpeed(level) {
 }
 
 function updateSpeedForScore(value) {
-  const speedBonus = Math.floor(value / speedUpScoreInterval);
-  setCurrentSpeedLevel(getLevelBaseSpeed(currentLevel) + speedBonus);
+  const speedBonus = getScoreSpeedBonus(currentMode, value, speedUpScoreInterval);
+  return setCurrentSpeedLevel(getLevelBaseSpeed(currentLevel) + speedBonus);
 }
 
 function getLevelLength(level) {
@@ -882,6 +925,7 @@ function showLevelSelect() {
   document.body.classList.remove('is-game-over');
   document.body.classList.remove('is-level-complete');
   speedSelect.disabled = false;
+  setCurrentSpeedLevel(selectedSpeedLevel, { pulse: false });
   startButton.textContent = '开始游戏';
   startButton.classList.remove('is-running');
   hideCoachTip();
@@ -1086,17 +1130,25 @@ function animate() {
       if (isPerfectLanding) {
         setPerfectCount(perfectCount + 1);
       }
-      updateSpeedForScore(score);
+      const didSpeedGoUp = updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
         setRainbowCount(rainbowCount + 1);
         const landingMessage = isPerfectLanding
           ? `Perfect! 彩虹换色：${gameColors[platform.nextColor].label}`
           : `彩虹换色：${gameColors[platform.nextColor].label}`;
-        gameMessage.textContent = withComboFeedback(landingMessage, combo);
+        gameMessage.textContent = withSpeedUpFeedback(
+          withComboFeedback(landingMessage, combo),
+          didSpeedGoUp,
+          currentSpeedLevel
+        );
       } else {
         const landingMessage = isPerfectLanding ? 'Perfect!' : '命中平台';
-        gameMessage.textContent = withComboFeedback(landingMessage, combo);
+        gameMessage.textContent = withSpeedUpFeedback(
+          withComboFeedback(landingMessage, combo),
+          didSpeedGoUp,
+          currentSpeedLevel
+        );
       }
 
       if (currentMode === 'level' && landingIndex >= levelEndLanding) {

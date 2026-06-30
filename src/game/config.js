@@ -36,21 +36,21 @@ export const starPaletteHex = [
 
 export const gameColors = {
   red: {
-    label: '红色',
+    label: '\u7ea2\u8272',
     ball: 0x5d1824,
     emissive: 0xff3f5f,
     pad: 0x6d1228,
     edge: 0xff9aac,
   },
   blue: {
-    label: '蓝色',
+    label: '\u84dd\u8272',
     ball: 0x183c6d,
     emissive: 0x29d7ff,
     pad: 0x123b6d,
     edge: 0xa6f6ff,
   },
   yellow: {
-    label: '黄色',
+    label: '\u9ec4\u8272',
     ball: 0x625018,
     emissive: 0xffd257,
     pad: 0x6d5212,
@@ -61,7 +61,7 @@ export const gameColors = {
 export const colorOrder = ['red', 'blue', 'yellow'];
 
 export const wildcardPad = {
-  label: '彩虹',
+  label: '\u5f69\u8679',
   pad: 0xf4fbff,
   emissive: 0xffffff,
   edge: 0xffffff,

@@ -2362,6 +2362,84 @@ body.is-level-complete .run-countdown {
   overflow-wrap: anywhere;
 }
 
+.run-record-progress {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+  min-height: 48px;
+  margin-top: 3px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(145, 247, 255, 0.12);
+}
+
+.run-record-progress > span {
+  color: rgba(223, 248, 255, 0.5);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.run-record-value {
+  justify-self: end;
+  min-width: 0;
+  color: #91f7ff;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.run-record-detail {
+  grid-column: 1 / -1;
+  color: rgba(223, 248, 255, 0.62);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.run-record-progress[data-state="record"] {
+  border-top-color: rgba(255, 210, 87, 0.38);
+}
+
+.run-record-progress[data-state="record"] .run-record-value,
+.run-record-progress[data-state="record"] .run-record-detail {
+  color: #ffef9a;
+}
+
+.run-record-progress[data-state="tied"] .run-record-value {
+  color: #d9fbff;
+}
+
+.run-record-progress[data-state="first"] .run-record-value {
+  color: rgba(223, 248, 255, 0.78);
+}
+
+.run-record-progress.is-record-pop {
+  animation: run-record-pop 520ms ease-out;
+}
+
+@keyframes run-record-pop {
+  0% {
+    filter: none;
+  }
+
+  42% {
+    filter:
+      drop-shadow(0 0 9px rgba(255, 239, 154, 0.86))
+      drop-shadow(0 0 18px rgba(145, 247, 255, 0.4));
+  }
+
+  100% {
+    filter: none;
+  }
+}
+
+body.is-low-power .run-record-progress.is-record-pop {
+  animation: none;
+}
 .live-star-board.is-full-star {
   border-color: rgba(255, 210, 87, 0.54);
   box-shadow: 0 0 22px rgba(255, 210, 87, 0.12);

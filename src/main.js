@@ -103,6 +103,7 @@ import {
 } from './game/scoreRecords.js';
 import { getPauseCopy, shouldAutoPause } from './game/pauseFeedback.js';
 import { getRenderQualitySettings } from './game/renderQuality.js';
+import { getRunRecordProgress } from './game/runRecordProgress.js';
 import { getDeathProgressSummary } from './game/runSummary.js';
 import {
   getRouteDifficulty,
@@ -192,6 +193,9 @@ const missionValue = document.querySelector('.mission-value');
 const liveStarBoard = document.querySelector('.live-star-board');
 const liveStarValue = document.querySelector('.live-star-value');
 const liveStarDetail = document.querySelector('.live-star-detail');
+const runRecordProgress = document.querySelector('.run-record-progress');
+const runRecordValue = document.querySelector('.run-record-value');
+const runRecordDetail = document.querySelector('.run-record-detail');
 const currentColorValue = document.querySelector('.current-color-value');
 const progressLabel = document.querySelector('.progress-label');
 const progressText = document.querySelector('.progress-text');
@@ -702,6 +706,7 @@ function setScore(value) {
   score = value;
   scoreValue.textContent = String(score);
   updateRunProgress();
+  updateRunRecordHud();
 
   if (currentMode === 'endless' && score === 25) {
     syncAchievements({ announce: true });
@@ -793,6 +798,7 @@ function setCombo(value) {
   maxCombo = Math.max(maxCombo, combo);
   comboValue.textContent = String(combo);
   pulseComboHud(combo);
+  updateRunRecordHud();
 
   if (combo === 0) {
     hideComboMilestone();
@@ -807,6 +813,7 @@ function setPerfectCount(value) {
   perfectCount = value;
   perfectValue.textContent = String(perfectCount);
   updateMissionHud();
+  updateRunRecordHud();
 }
 
 function setRainbowCount(value) {
@@ -893,6 +900,37 @@ function updateLiveStarHud(currentLandingIndex = Math.floor(hopProgress)) {
     '本局星级进度 ' + progress.stars + ' 星，' + progress.detail
   );
 }
+function updateRunRecordHud() {
+  const progress = getRunRecordProgress({
+    endlessRecord: endlessPerformance,
+    levelRecord: getLevelPerformance(levelPerformance, currentLevel),
+    maxCombo,
+    mode: currentMode,
+    perfect: perfectCount,
+    score,
+  });
+  const previousHeadline = runRecordValue.textContent;
+  const shouldPulse = (
+    isGameRunning &&
+    progress.state === 'record' &&
+    previousHeadline !== progress.headline
+  );
+
+  runRecordProgress.dataset.state = progress.state;
+  runRecordValue.textContent = progress.headline;
+  runRecordDetail.textContent = progress.detail;
+  runRecordProgress.setAttribute(
+    'aria-label',
+    '个人纪录：' + progress.headline + '，' + progress.detail
+  );
+  runRecordProgress.classList.remove('is-record-pop');
+
+  if (shouldPulse) {
+    void runRecordProgress.offsetWidth;
+    runRecordProgress.classList.add('is-record-pop');
+  }
+}
+
 function updateMissionHud() {
   missionValue.textContent = currentMode === 'endless' ? '--' : getMissionProgressText();
   missionValue.classList.toggle('is-complete', currentMode !== 'endless' && isMissionComplete());

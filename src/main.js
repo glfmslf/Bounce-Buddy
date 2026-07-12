@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import './styles.css';
 import {
+  achievementStorageKey,
   baseY,
   bestScoreStorageKey,
   endlessBestScoreStorageKey,
@@ -21,6 +22,12 @@ import {
   unlockedLevelStorageKey,
   visibleLandingCount,
 } from './game/config.js';
+import {
+  getAchievementProgressText,
+  getAchievementStates,
+  normalizeAchievementIds,
+  resolveAchievements,
+} from './game/achievements.js';
 import {
   findPlatformAt,
   findValidPlatformForColor,
@@ -114,6 +121,11 @@ const modePanels = document.querySelectorAll('.level-mode-panel');
 const endlessEntryCard = document.querySelector('.endless-entry-card');
 const endlessBestValue = document.querySelector('.endless-best-value');
 const endlessPerformanceValue = document.querySelector('.endless-performance-value');
+const achievementCount = document.querySelector('.achievement-count');
+const achievementGrid = document.querySelector('.achievement-grid');
+const achievementToast = document.querySelector('.achievement-toast');
+const achievementToastTitle = document.querySelector('.achievement-toast-title');
+const achievementToastDetail = document.querySelector('.achievement-toast-detail');
 const touchControlButtons = document.querySelectorAll('.touch-control-button');
 const coachTip = document.querySelector('.coach-tip');
 const coachDismissButton = document.querySelector('.coach-dismiss-button');
@@ -191,6 +203,7 @@ let selectedSpeedLevel = Number(speedSelect.value);
 let currentSpeedLevel = selectedSpeedLevel;
 let speedPulseTimeoutId = null;
 let comboMilestoneTimeoutId = null;
+let achievementToastTimeoutId = null;
 let hasSeenTutorial = readTutorialSeen();
 let soundEnabled = readSoundEnabled();
 const audioFeedback = createAudioFeedback();
@@ -472,6 +485,102 @@ let completedLanding = 0;
 let unlockedLevel = readUnlockedLevel();
 let levelStars = readLevelStars();
 let levelPerformance = readLevelPerformance();
+let unlockedAchievementIds = readAchievements();
+
+function getAchievementContext() {
+  return {
+    endlessPerformance,
+    levelCatalog,
+    levelPerformance,
+    levelStars,
+    runBestCombo: maxCombo,
+    runScore: score,
+  };
+}
+
+function readAchievements() {
+  try {
+    return normalizeAchievementIds(
+      JSON.parse(localStorage.getItem(achievementStorageKey) ?? '[]')
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeAchievements() {
+  try {
+    localStorage.setItem(
+      achievementStorageKey,
+      JSON.stringify(unlockedAchievementIds)
+    );
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+}
+
+function showAchievementToast(achievement, extraCount = 0) {
+  window.clearTimeout(achievementToastTimeoutId);
+  achievementToastTitle.textContent = achievement.name;
+  achievementToastDetail.textContent = extraCount > 0
+    ? achievement.description + ' · 另解锁 ' + extraCount + ' 项'
+    : achievement.description;
+  achievementToast.classList.remove('is-visible');
+  void achievementToast.offsetWidth;
+  achievementToast.classList.add('is-visible');
+  playGameFeedback('achievement');
+
+  achievementToastTimeoutId = window.setTimeout(() => {
+    achievementToast.classList.remove('is-visible');
+    achievementToastTimeoutId = null;
+  }, 2600);
+}
+
+function renderAchievements(states = getAchievementStates(
+  getAchievementContext(),
+  unlockedAchievementIds
+)) {
+  const unlockedCount = states.filter((achievement) => achievement.isUnlocked).length;
+  achievementCount.textContent = unlockedCount + '/' + states.length;
+  achievementGrid.replaceChildren();
+
+  states.forEach((achievement) => {
+    const item = document.createElement('div');
+    item.className = 'achievement-item';
+    item.classList.toggle('is-unlocked', achievement.isUnlocked);
+    item.innerHTML =
+      '<span class="achievement-icon" aria-hidden="true">' + achievement.icon + '</span>' +
+      '<span class="achievement-copy">' +
+        '<strong>' + achievement.name + '</strong>' +
+        '<small>' + achievement.description + '</small>' +
+      '</span>' +
+      '<span class="achievement-state">' +
+        getAchievementProgressText(achievement) +
+      '</span>';
+    achievementGrid.appendChild(item);
+  });
+}
+
+function syncAchievements({ announce = false } = {}) {
+  const result = resolveAchievements(
+    unlockedAchievementIds,
+    getAchievementContext()
+  );
+  const didChange = result.unlockedIds.length !== unlockedAchievementIds.length;
+  unlockedAchievementIds = result.unlockedIds;
+
+  if (didChange) {
+    writeAchievements();
+  }
+
+  renderAchievements(result.states);
+
+  if (announce && result.newUnlocks.length > 0) {
+    showAchievementToast(result.newUnlocks[0], result.newUnlocks.length - 1);
+  }
+
+  return result;
+}
 
 function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
@@ -533,6 +642,10 @@ function setScore(value) {
   score = value;
   scoreValue.textContent = String(score);
   updateRunProgress();
+
+  if (currentMode === 'endless' && score === 25) {
+    syncAchievements({ announce: true });
+  }
 }
 
 function getLevelBaseSpeed(level) {
@@ -623,6 +736,10 @@ function setCombo(value) {
 
   if (combo === 0) {
     hideComboMilestone();
+  }
+
+  if (combo === 10) {
+    syncAchievements({ announce: true });
   }
 }
 
@@ -1016,6 +1133,7 @@ function setUnlockedLevel(level) {
 }
 
 function renderLevelSelect() {
+  renderAchievements();
   const isStarComplete = isStarCollectionComplete(levelStars, levelCatalog.length);
   levelStarProgress.textContent = getStarProgressText(levelStars, levelCatalog.length);
   levelStarRank.textContent = getStarProgressRank(levelStars, levelCatalog.length);
@@ -1147,6 +1265,7 @@ function completeLevel(landingIndex) {
   const perfectSummary = 'Perfect ' + perfectCount + '/' + getLevelLength(completedLevel);
   levelCompleteScore.textContent =
     perfectSummary + ' · 最高连击 ' + maxCombo;
+  syncAchievements({ announce: true });
   nextLevelButton.textContent = hasNextLevel ? '进入下一关' : '回到选关';
   gameMessage.textContent = `「${getLevelName(completedLevel)}」完成`;
   hideCoachTip();
@@ -1501,6 +1620,7 @@ function endGame(reason = '') {
   deathCombo.textContent = String(maxCombo);
   deathPerfect.textContent = String(perfectCount);
   deathMission.textContent = currentMode === 'endless' ? '无尽' : getMissionProgressText();
+  syncAchievements({ announce: true });
 }
 
 updateSoundToggle();
@@ -1509,6 +1629,7 @@ setBallColor(currentBallColor);
 setSpeedLevel(selectedSpeedLevel);
 setCombo(combo);
 updateLevelHud(0);
+syncAchievements();
 renderLevelSelect();
 setLevelSelectMode('levels');
 

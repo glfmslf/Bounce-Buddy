@@ -7,6 +7,7 @@ export const speedUpScoreInterval = 10;
 export const unlockedLevelStorageKey = 'bounceBuddyUnlockedLevel';
 export const levelStarsStorageKey = 'bounceBuddyLevelStars';
 export const levelPerformanceStorageKey = 'bounceBuddyLevelPerformance';
+export const achievementStorageKey = 'bounceBuddyAchievements';
 export const levelCatalog = [
   { intensity: 1, name: '\u7cd6\u971c\u8d77\u8df3', length: 8, mission: { type: 'perfect', target: 4 } },
   { intensity: 1, name: '\u84dd\u8393\u5f2f\u9053', length: 10, mission: { type: 'perfect', target: 6 } },

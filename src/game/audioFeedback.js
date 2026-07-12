@@ -49,6 +49,12 @@ export function getFeedbackSequence(event, color = 'red') {
         tone(784, { delay: 0.055, duration: 0.12, gain: 0.03 }),
         tone(1047, { delay: 0.12, duration: 0.18, gain: 0.028 }),
       ];
+    case 'achievement':
+      return [
+        tone(523, { duration: 0.08, gain: 0.024, type: 'triangle' }),
+        tone(784, { delay: 0.06, duration: 0.12, gain: 0.028 }),
+        tone(1175, { delay: 0.14, duration: 0.2, gain: 0.026 }),
+      ];
     case 'shard':
       return [
         tone(659, { duration: 0.07, gain: 0.024, type: 'triangle' }),

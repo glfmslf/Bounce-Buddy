@@ -30,6 +30,13 @@
           <button class="mode-tab is-active" type="button" data-mode-tab="levels">普通关卡</button>
           <button class="mode-tab" type="button" data-mode-tab="endless">无尽模式</button>
         </div>
+        <section class="achievement-panel" aria-label="生涯成就">
+          <div class="achievement-heading">
+            <span>生涯成就</span>
+            <strong class="achievement-count">0/6</strong>
+          </div>
+          <div class="achievement-grid"></div>
+        </section>
         <div class="level-mode-panel is-active" data-mode-panel="levels">
           <button class="continue-level-button" type="button">
             <span class="continue-level-kicker">继续挑战</span>
@@ -167,6 +174,11 @@
         <span class="combo-milestone-detail">继续保持</span>
       </div>
       <div class="combo-milestone-flash" aria-hidden="true"></div>
+      <div class="achievement-toast" aria-live="polite">
+        <span>成就解锁</span>
+        <strong class="achievement-toast-title">落地生根</strong>
+        <small class="achievement-toast-detail">首次通关普通关卡</small>
+      </div>
       <div class="run-countdown" aria-live="assertive" aria-atomic="true">
         <span class="run-countdown-kicker">糖霜起跳</span>
         <strong class="run-countdown-value">3</strong>

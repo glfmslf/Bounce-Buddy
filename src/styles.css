@@ -2391,3 +2391,93 @@ body.is-playing:not(.is-game-over) .live-star-board {
     width: 100%;
   }
 }
+
+.power-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  color: rgba(223, 248, 255, 0.74);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  user-select: none;
+}
+
+.power-toggle-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.speed-control .power-toggle-label {
+  display: inline;
+}
+
+.speed-control .power-toggle-track {
+  position: relative;
+  display: block;
+  width: 34px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(223, 248, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(5, 14, 28, 0.62);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.power-toggle-track::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  content: "";
+  border-radius: 50%;
+  background: rgba(223, 248, 255, 0.72);
+  transition:
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.power-toggle-input:checked + .power-toggle-track {
+  border-color: rgba(255, 210, 87, 0.62);
+  background: rgba(255, 210, 87, 0.22);
+}
+
+.power-toggle-input:checked + .power-toggle-track::after {
+  background: #91f7ff;
+  transform: translateX(16px);
+}
+
+.power-toggle-input:focus-visible + .power-toggle-track {
+  outline: 2px solid #ffef9a;
+  outline-offset: 2px;
+}
+
+.power-toggle.is-enabled .power-toggle-label {
+  color: #ffef9a;
+}
+
+body.is-low-power .speed-value.is-speed-pop,
+body.is-low-power .combo-value.is-combo-pop,
+body.is-low-power .shard-value.is-shard-pop,
+body.is-low-power .mission-board.is-mission-complete-pop,
+body.is-low-power .combo-milestone.is-visible,
+body.is-low-power .combo-milestone-flash.is-visible,
+body.is-low-power .run-countdown.is-step-pulse .run-countdown-value {
+  animation: none;
+}
+
+body.is-low-power .achievement-toast.is-visible {
+  animation: none;
+  opacity: 1;
+  transform: translate(-50%, 0);
+}

@@ -18,6 +18,7 @@ import {
   platformHalfWidth,
   speedUpScoreInterval,
   soundEnabledStorageKey,
+  lowPowerStorageKey,
   starPaletteHex,
   tutorialSeenStorageKey,
   unlockedLevelStorageKey,
@@ -96,6 +97,7 @@ import {
   shouldUpdateBestScore,
 } from './game/scoreRecords.js';
 import { getPauseCopy, shouldAutoPause } from './game/pauseFeedback.js';
+import { getRenderQualitySettings } from './game/renderQuality.js';
 import { getDeathProgressSummary } from './game/runSummary.js';
 import {
   getRouteDifficulty,
@@ -143,6 +145,7 @@ const startButton = document.querySelector('.start-button');
 const speedSelect = document.querySelector('.speed-select');
 const speedControl = document.querySelector('.speed-control');
 const soundToggle = document.querySelector('.sound-toggle-input');
+const lowPowerToggle = document.querySelector('.power-toggle-input');
 levelSelectScreen.append(speedControl);
 const speedValue = document.querySelector('.speed-value');
 const scoreValue = document.querySelector('.score-value');
@@ -219,6 +222,7 @@ let comboMilestoneTimeoutId = null;
 let achievementToastTimeoutId = null;
 let hasSeenTutorial = readTutorialSeen();
 let soundEnabled = readSoundEnabled();
+let lowPowerEnabled = readLowPowerEnabled();
 const audioFeedback = createAudioFeedback();
 let isCoachBlocking = false;
 let isCountdownActive = false;
@@ -243,9 +247,13 @@ camera.position.set(0, 7.8, 12.4);
 camera.lookAt(0, 1.8, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const initialRenderQuality = getRenderQualitySettings({
+  devicePixelRatio: window.devicePixelRatio,
+  lowPower: lowPowerEnabled,
+});
+renderer.setPixelRatio(initialRenderQuality.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = initialRenderQuality.shadows;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 app.appendChild(renderer.domElement);
 
@@ -418,7 +426,22 @@ const impactMaterial = new THREE.MeshBasicMaterial({
 
 const landingPads = createLandingPads(scene);
 
+function clearImpactEffects() {
+  impactEffects.splice(0).forEach((effect) => {
+    scene.remove(effect.ring);
+    scene.remove(effect.sparks);
+    effect.ring.geometry.dispose();
+    effect.ring.material.dispose();
+    effect.sparks.geometry.dispose();
+    effect.sparks.material.dispose();
+  });
+  impactLight.intensity = 0;
+}
 function createImpact(x, z, colorKey = currentBallColor) {
+  if (lowPowerEnabled) {
+    return;
+  }
+
   const impactColor = gameColors[colorKey] ?? gameColors.blue;
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.92, 1.05, 96),
@@ -1357,6 +1380,57 @@ function setBallColor(colorKey) {
   currentColorValue.style.textShadow = `0 0 18px ${glowColor}`;
 }
 
+function readLowPowerEnabled() {
+  try {
+    return localStorage.getItem(lowPowerStorageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function updateLowPowerToggle() {
+  lowPowerToggle.checked = lowPowerEnabled;
+  lowPowerToggle.setAttribute(
+    'aria-label',
+    lowPowerEnabled ? '关闭省电模式' : '开启省电模式'
+  );
+  lowPowerToggle
+    .closest('.power-toggle')
+    .classList.toggle('is-enabled', lowPowerEnabled);
+}
+
+function applyRenderQuality() {
+  const settings = getRenderQualitySettings({
+    devicePixelRatio: window.devicePixelRatio,
+    lowPower: lowPowerEnabled,
+  });
+  renderer.setPixelRatio(settings.pixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = settings.shadows;
+  renderer.shadowMap.needsUpdate = true;
+  keyLight.castShadow = settings.shadows;
+  ball.castShadow = settings.shadows;
+  floor.receiveShadow = settings.shadows;
+  document.body.classList.toggle('is-low-power', lowPowerEnabled);
+
+  if (!settings.impacts) {
+    clearImpactEffects();
+  }
+
+  updateLowPowerToggle();
+}
+
+function setLowPowerEnabled(enabled) {
+  lowPowerEnabled = Boolean(enabled);
+
+  try {
+    localStorage.setItem(lowPowerStorageKey, String(lowPowerEnabled));
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+
+  applyRenderQuality();
+}
 function readSoundEnabled() {
   try {
     return localStorage.getItem(soundEnabledStorageKey) !== 'false';
@@ -1600,14 +1674,7 @@ function startRun(level = 1, mode = 'level') {
   if (!isCoachBlocking) {
     startRunCountdown();
   }
-  impactEffects.splice(0).forEach((effect) => {
-    scene.remove(effect.ring);
-    scene.remove(effect.sparks);
-    effect.ring.geometry.dispose();
-    effect.ring.material.dispose();
-    effect.sparks.geometry.dispose();
-    effect.sparks.material.dispose();
-  });
+  clearImpactEffects();
   startButton.textContent = '重新开始';
   startButton.classList.add('is-running');
 }
@@ -1724,6 +1791,7 @@ function endGame(reason = '') {
 }
 
 updateSoundToggle();
+applyRenderQuality();
 updateBestScoreDisplay();
 setBallColor(currentBallColor);
 setSpeedLevel(selectedSpeedLevel);
@@ -1733,6 +1801,9 @@ syncAchievements();
 renderLevelSelect();
 setLevelSelectMode('levels');
 
+lowPowerToggle.addEventListener('change', () => {
+  setLowPowerEnabled(lowPowerToggle.checked);
+});
 soundToggle.addEventListener('change', () => {
   setSoundEnabled(soundToggle.checked);
 });
@@ -2118,6 +2189,10 @@ function animate() {
 function handleResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(getRenderQualitySettings({
+    devicePixelRatio: window.devicePixelRatio,
+    lowPower: lowPowerEnabled,
+  }).pixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 

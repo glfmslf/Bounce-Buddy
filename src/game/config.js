@@ -4,6 +4,7 @@ export const endlessPerformanceStorageKey = 'bounceBuddyEndlessPerformance';
 export const endlessRunHistoryStorageKey = 'bounceBuddyEndlessRunHistory';
 export const tutorialSeenStorageKey = 'bounceBuddyTutorialSeen';
 export const soundEnabledStorageKey = 'bounceBuddySoundEnabled';
+export const lowPowerStorageKey = 'bounceBuddyLowPower';
 export const speedUpScoreInterval = 10;
 export const unlockedLevelStorageKey = 'bounceBuddyUnlockedLevel';
 export const levelStarsStorageKey = 'bounceBuddyLevelStars';

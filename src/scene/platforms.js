@@ -20,6 +20,8 @@ const landingArrowShape = new THREE.Shape()
   .lineTo(-0.36, -0.02)
   .lineTo(0, 0.28);
 const landingArrowGeometry = new THREE.ShapeGeometry(landingArrowShape);
+const shardCoreGeometry = new THREE.OctahedronGeometry(0.24, 0);
+const shardHaloGeometry = new THREE.TorusGeometry(0.34, 0.024, 8, 32);
 const landingPadMaterial = new THREE.MeshStandardMaterial({
   color: 0x123b6d,
   emissive: 0x29d7ff,
@@ -41,6 +43,20 @@ const landingArrowMaterial = new THREE.MeshBasicMaterial({
   blending: THREE.AdditiveBlending,
   depthWrite: false,
   side: THREE.DoubleSide,
+});
+const shardCoreMaterial = new THREE.MeshStandardMaterial({
+  color: 0xffef9a,
+  emissive: 0xffd257,
+  emissiveIntensity: 2.2,
+  roughness: 0.18,
+  metalness: 0.3,
+});
+const shardHaloMaterial = new THREE.MeshBasicMaterial({
+  color: 0x91f7ff,
+  transparent: true,
+  opacity: 0.72,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
 });
 const finishGoalMaterial = new THREE.MeshBasicMaterial({
   color: 0xffd257,
@@ -87,6 +103,13 @@ export function createLandingPads(scene) {
       arrow.position.set(0, 0.116, zOffset);
       return arrow;
     });
+    const shard = new THREE.Group();
+    const shardCore = new THREE.Mesh(shardCoreGeometry, shardCoreMaterial.clone());
+    const shardHalo = new THREE.Mesh(shardHaloGeometry, shardHaloMaterial.clone());
+    shardHalo.rotation.x = Math.PI / 2;
+    shard.add(shardCore, shardHalo);
+    shard.visible = false;
+    shard.userData.animationOffset = i * 0.47;
     const finishRing = new THREE.Mesh(finishRingGeometry, finishGoalMaterial.clone());
     const finishLine = new THREE.Mesh(finishLineGeometry, finishGoalMaterial.clone());
     const stripes = wildcardStripeMaterials.map((material, stripeIndex) => {
@@ -112,6 +135,7 @@ export function createLandingPads(scene) {
     pad.add(edges);
     arrows.forEach((arrow) => pad.add(arrow));
     pad.add(finishRing);
+    pad.add(shard);
     pad.add(finishLine);
     stripes.forEach((stripe) => pad.add(stripe));
     beacons.forEach((beacon) => pad.add(beacon));
@@ -119,6 +143,7 @@ export function createLandingPads(scene) {
     pad.userData.edges = edges;
     pad.userData.arrows = arrows;
     pad.userData.finishRing = finishRing;
+    pad.userData.shard = shard;
     pad.userData.finishLine = finishLine;
     pad.userData.stripes = stripes;
     pad.userData.beacons = beacons;
@@ -129,17 +154,32 @@ export function createLandingPads(scene) {
   return landingPads;
 }
 
-export function applyPlatformVisual(pad, platform, isCurrentTarget, isFinishLanding = false) {
+export function applyPlatformVisual(
+  pad,
+  platform,
+  isCurrentTarget,
+  isFinishLanding = false,
+  showShard = false
+) {
   const bodyMaterial = pad.userData.body.material;
   const edgeMaterial = pad.userData.edges.material;
   const arrows = pad.userData.arrows;
   const finishRing = pad.userData.finishRing;
+  const shard = pad.userData.shard;
   const finishLine = pad.userData.finishLine;
   const stripes = pad.userData.stripes;
   const beacons = pad.userData.beacons;
 
   finishRing.visible = isFinishLanding;
   finishLine.visible = isFinishLanding;
+  shard.visible = showShard;
+  if (showShard) {
+    const animationTime = performance.now() * 0.004 + shard.userData.animationOffset;
+    shard.position.y = 0.72 + Math.sin(animationTime) * 0.08;
+    shard.rotation.y = animationTime * 0.72;
+    shard.rotation.z = Math.sin(animationTime * 0.7) * 0.18;
+    shard.scale.setScalar(isCurrentTarget ? 1.18 : 1);
+  }
 
   if (isFinishLanding) {
     const finishOpacity = isCurrentTarget ? 0.76 : 0.5;

@@ -6,15 +6,37 @@ import {
   minWildcardGap,
   platformHalfWidth,
 } from './config.js';
+import { isShardLanding } from './shardProgress.js';
 
 const startingRoutePlan = { color: 'red', laneIndex: 1, shouldCreateWildcard: false };
 let routeSeed = createRouteSeed();
+let routeDifficulty = 0;
 const platformLayout = new Map([
   [0, createLandingPlatforms(0, startingRoutePlan)],
 ]);
 const routePlans = new Map([[0, startingRoutePlan]]);
 const retainedRouteHistory = maxWildcardGap + 6;
 
+
+function normalizeRouteDifficulty(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+
+  return Math.min(1, Math.max(0, numericValue));
+}
+
+function normalizeRouteSeed(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return createRouteSeed();
+  }
+
+  return Math.floor(numericValue) >>> 0;
+}
 function createRouteSeed() {
   return Math.floor(Math.random() * 0xffffffff);
 }
@@ -100,11 +122,14 @@ function shouldCreateWildcardLanding(index) {
     return true;
   }
 
-  return seededValue(index, 29) < 0.34;
+  const wildcardChance = 0.22 + routeDifficulty * 0.24;
+
+  return seededValue(index, 29) < wildcardChance;
 }
 
 function getPlatformCount(index) {
-  let platformCount = 1 + Number(seededValue(index, 3) < 0.48);
+  const distractorChance = 0.34 + routeDifficulty * 0.34;
+  let platformCount = 1 + Number(seededValue(index, 3) < distractorChance);
   const previousPlatforms = platformLayout.get(index - 1);
   const earlierPlatforms = platformLayout.get(index - 2);
 
@@ -152,6 +177,7 @@ function createLandingPlatforms(index, routePlan) {
     if (shouldCreateWildcard && platformIndex === 0) {
       return {
         x,
+        hasShard: isShardLanding(index),
         type: 'wildcard',
         color: requiredColor,
         nextColor,
@@ -164,6 +190,7 @@ function createLandingPlatforms(index, routePlan) {
 
     return {
       x,
+      hasShard: platformIndex === 0 && isShardLanding(index),
       type: 'normal',
       color,
       nextColor: null,
@@ -187,11 +214,11 @@ function getNextRouteLane(index, previousLaneIndex) {
       let weight = 4;
 
       if (laneIndex === previousLaneIndex) {
-        weight -= 1.5;
+        weight -= 0.7 + routeDifficulty * 1.2;
       }
 
       if (recentLanes.slice(0, 2).every((recentLaneIndex) => recentLaneIndex === laneIndex)) {
-        weight -= 1.5;
+        weight -= 0.7 + routeDifficulty * 1.2;
       }
 
       if (previousMove !== null && nextMove === previousMove) {
@@ -232,8 +259,39 @@ function getRoutePlan(index) {
   return routePlans.get(index);
 }
 
-export function resetRoute() {
-  routeSeed = createRouteSeed();
+
+export function setRouteProfile({
+  difficulty = routeDifficulty,
+  seed = routeSeed,
+} = {}, fromLandingIndex = 0) {
+  routeDifficulty = normalizeRouteDifficulty(difficulty);
+  routeSeed = normalizeRouteSeed(seed);
+  const boundary = Math.max(0, Math.floor(Number(fromLandingIndex) || 0));
+
+  for (const index of platformLayout.keys()) {
+    if (index > boundary) {
+      platformLayout.delete(index);
+    }
+  }
+
+  for (const index of routePlans.keys()) {
+    if (index > boundary) {
+      routePlans.delete(index);
+    }
+  }
+
+  return {
+    difficulty: routeDifficulty,
+    seed: routeSeed,
+  };
+}
+
+export function setRouteDifficulty(difficulty, fromLandingIndex = 0) {
+  return setRouteProfile({ difficulty }, fromLandingIndex).difficulty;
+}
+export function resetRoute(difficulty = 0, seed) {
+  routeDifficulty = normalizeRouteDifficulty(difficulty);
+  routeSeed = normalizeRouteSeed(seed);
   platformLayout.clear();
   routePlans.clear();
   routePlans.set(0, startingRoutePlan);
@@ -274,6 +332,7 @@ export function pruneRouteBefore(currentLandingIndex) {
 
 export function getRouteCacheStats() {
   return {
+    difficulty: routeDifficulty,
     platformLayouts: platformLayout.size,
     routePlans: routePlans.size,
   };

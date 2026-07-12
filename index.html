@@ -12,18 +12,30 @@
         <div class="level-select-header">
           <span>选择关卡</span>
           <strong>Bounce Buddy</strong>
+          <span class="level-star-progress">星星 0/30</span>
+          <div class="level-star-progress-track" aria-hidden="true">
+            <div class="level-star-progress-fill"></div>
+          </div>
+          <span class="level-star-rank">星尘新手</span>
           <p>通关前一关后，下一关才会解锁。</p>
         </div>
         <div class="rules-panel" aria-label="玩法提示">
           <span>玩法提示</span>
           <p>只能落到同色平台；彩虹平台会改变小球颜色。</p>
           <p>用 A/D、方向键、左右按钮或滑动来移动。</p>
+          <p>发光星尘需要精准落在平台中心才能收集。</p>
+          <p>普通关卡路线固定，重试可以记住节奏；无尽模式每局随机。</p>
         </div>
         <div class="mode-tabs" aria-label="选择模式">
           <button class="mode-tab is-active" type="button" data-mode-tab="levels">普通关卡</button>
           <button class="mode-tab" type="button" data-mode-tab="endless">无尽模式</button>
         </div>
         <div class="level-mode-panel is-active" data-mode-panel="levels">
+          <button class="continue-level-button" type="button">
+            <span class="continue-level-kicker">继续挑战</span>
+            <strong class="continue-level-name">第 1 关 · 糖霜起跳</strong>
+            <span class="continue-level-reason">推进新关 →</span>
+          </button>
           <div class="level-grid"></div>
         </div>
         <div class="level-mode-panel" data-mode-panel="endless">
@@ -31,6 +43,8 @@
             <span class="level-card-index">无尽模式</span>
             <strong class="level-card-name">星河没完没了</strong>
             <span class="level-card-meta">没有终点；每 10 分升 1 档；速度没有上限</span>
+            <span class="endless-best-value">无尽最佳 0</span>
+            <span class="endless-performance-value">连击 0 · Perfect 0 · 星尘 0</span>
           </button>
         </div>
       </section>
@@ -40,7 +54,7 @@
           <strong class="score-value">0</strong>
         </div>
         <div class="score-board best-score-board">
-          <span>最佳</span>
+          <span class="best-score-label">最佳</span>
           <strong class="best-score-value">0</strong>
         </div>
         <div class="score-board level-board">
@@ -58,6 +72,10 @@
         <div class="score-board perfect-board">
           <span>Perfect</span>
           <strong class="perfect-value">0</strong>
+        </div>
+        <div class="score-board shard-board">
+          <span>星尘</span>
+          <strong class="shard-value">0</strong>
         </div>
         <div class="score-board mission-board">
           <span>任务</span>
@@ -79,6 +97,14 @@
           <strong class="death-score">0</strong>
           <span class="death-reason">没有落到平台</span>
           <span class="death-best">最佳 0</span>
+          <span class="death-record-detail">暂无详细纪录</span>
+          <div class="death-progress-summary">
+            <span class="death-progress-label">距离终点还差 8 跳</span>
+            <strong class="death-progress-text">本关 0/8</strong>
+            <div class="death-progress-track" aria-hidden="true">
+              <div class="death-progress-fill"></div>
+            </div>
+          </div>
           <div class="death-summary" aria-label="本局总结">
             <span>最高连击 <strong class="death-combo">0</strong></span>
             <span>Perfect <strong class="death-perfect">0</strong></span>
@@ -106,6 +132,11 @@
             <option value="9">9 档</option>
             <option value="10">10 档</option>
           </select>
+          <label class="sound-toggle">
+            <span class="sound-toggle-label">音效</span>
+            <input class="sound-toggle-input" type="checkbox" checked />
+            <span class="sound-toggle-track" aria-hidden="true"></span>
+          </label>
         </div>
       </div>
       <div class="level-complete-panel" aria-live="polite">
@@ -113,7 +144,11 @@
         <strong class="level-complete-title">第 1 关</strong>
         <span class="level-complete-detail">下一关 13 跳到终点</span>
         <span class="level-complete-stars" aria-label="本关星级">☆☆☆</span>
+        <span class="level-complete-record">历史最高 0 星</span>
+        <span class="level-complete-collection">总星星 0/30 · 星尘新手</span>
         <span class="level-complete-mission">任务 0/0</span>
+        <span class="level-complete-performance">暂无详细纪录</span>
+        <span class="level-complete-next-goal">下一关目标：任务 Perfect 0</span>
         <span class="level-complete-score">当前分数 0</span>
         <button class="next-level-button" type="button">进入下一关</button>
         <button class="back-to-levels-button" type="button">返回选关</button>
@@ -126,11 +161,22 @@
         <button class="pause-retry-button" type="button">重试本局</button>
         <button class="pause-levels-button" type="button">返回选关</button>
       </div>
+      <div class="combo-milestone" aria-live="polite">
+        <span class="combo-milestone-kicker">连击里程碑</span>
+        <strong class="combo-milestone-title">5 连击</strong>
+        <span class="combo-milestone-detail">继续保持</span>
+      </div>
+      <div class="combo-milestone-flash" aria-hidden="true"></div>
+      <div class="run-countdown" aria-live="assertive" aria-atomic="true">
+        <span class="run-countdown-kicker">糖霜起跳</span>
+        <strong class="run-countdown-value">3</strong>
+        <span class="run-countdown-detail">任务：Perfect 4</span>
+      </div>
       <div class="coach-tip" aria-live="polite">
         <strong>先看颜色，再跳</strong>
         <span>目标是落到和小球同色的平台；彩虹平台会帮你换色。</span>
         <span>左右滑动、点底部按钮，或按 A/D 来换道。</span>
-        <button class="coach-dismiss-button" type="button">知道了</button>
+        <button class="coach-dismiss-button" type="button">准备好了</button>
       </div>
       <div class="touch-controls" aria-label="移动控制">
         <button class="touch-control-button" type="button" data-move="-1" aria-label="向左移动">&#8592;</button>

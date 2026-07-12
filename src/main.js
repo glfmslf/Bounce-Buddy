@@ -3,15 +3,19 @@ import './styles.css';
 import {
   baseY,
   bestScoreStorageKey,
+  endlessBestScoreStorageKey,
+  endlessPerformanceStorageKey,
   bounceHeight,
   gameColors,
   landingGap,
   lanePositions,
   levelCatalog,
+  levelPerformanceStorageKey,
   levelStarsStorageKey,
   nearZ,
   platformHalfWidth,
   speedUpScoreInterval,
+  soundEnabledStorageKey,
   starPaletteHex,
   tutorialSeenStorageKey,
   unlockedLevelStorageKey,
@@ -27,13 +31,68 @@ import {
   platformMatchesColor,
   pruneRouteBefore,
   resetRoute,
+  setRouteProfile,
   simulateReachableRoute,
 } from './game/route.js';
 import {
   applyPlatformVisual,
   createLandingPads,
 } from './scene/platforms.js';
-import { withComboFeedback } from './game/comboFeedback.js';
+import { createAudioFeedback } from './game/audioFeedback.js';
+import {
+  getEndlessPerformanceResultText,
+  getEndlessPerformanceText,
+  normalizeEndlessPerformance,
+  updateEndlessPerformance,
+} from './game/endlessPerformance.js';
+import { getComboMilestone, withComboFeedback } from './game/comboFeedback.js';
+import {
+  getCountdownDelay,
+  getRunCountdownCopy,
+  runCountdownSteps,
+} from './game/countdownFeedback.js';
+import {
+  calculateLevelStars as calculateRewardStars,
+  getLevelGoalPreview,
+  getNextLevelGoalText,
+} from './game/levelGoals.js';
+import { getLevelRouteSeed } from './game/levelRouteSeed.js';
+import {
+  getLevelPerformance,
+  getLevelPerformanceText,
+  getPerformanceResultText,
+  normalizeLevelPerformanceMap,
+  updateLevelPerformance,
+} from './game/levelPerformance.js';
+import {
+  getLevelCardStatus,
+  getRecommendedLevel,
+  getRecommendedLevelReason,
+  getStarCollectionSummary,
+  getStarProgressPercent,
+  getStarProgressRank,
+  getStarProgressText,
+  getStarRecordText,
+  isStarCollectionComplete,
+} from './game/starProgress.js';
+import {
+  getBestScoreLabel,
+  normalizeScore,
+  shouldUpdateBestScore,
+} from './game/scoreRecords.js';
+import { getPauseCopy, shouldAutoPause } from './game/pauseFeedback.js';
+import { getDeathProgressSummary } from './game/runSummary.js';
+import {
+  getRouteDifficulty,
+  getRouteIntensityStates,
+  getRouteIntensityText,
+  normalizeRouteIntensity,
+} from './game/routeIntensity.js';
+import {
+  canCollectShard,
+  getMissionProgressValue,
+  getMissionTypeLabel,
+} from './game/shardProgress.js';
 import {
   didSpeedIncrease,
   getScoreSpeedBonus,
@@ -41,37 +100,70 @@ import {
 } from './game/speedFeedback.js';
 
 const app = document.querySelector('#app');
+const levelSelectScreen = document.querySelector('.level-select-screen');
+const gameHud = document.querySelector('.game-hud');
 const levelGrid = document.querySelector('.level-grid');
+const continueLevelButton = document.querySelector('.continue-level-button');
+const continueLevelName = document.querySelector('.continue-level-name');
+const continueLevelReason = document.querySelector('.continue-level-reason');
+const levelStarProgress = document.querySelector('.level-star-progress');
+const levelStarProgressFill = document.querySelector('.level-star-progress-fill');
+const levelStarRank = document.querySelector('.level-star-rank');
 const modeTabs = document.querySelectorAll('.mode-tab');
 const modePanels = document.querySelectorAll('.level-mode-panel');
 const endlessEntryCard = document.querySelector('.endless-entry-card');
+const endlessBestValue = document.querySelector('.endless-best-value');
+const endlessPerformanceValue = document.querySelector('.endless-performance-value');
 const touchControlButtons = document.querySelectorAll('.touch-control-button');
 const coachTip = document.querySelector('.coach-tip');
 const coachDismissButton = document.querySelector('.coach-dismiss-button');
 const startButton = document.querySelector('.start-button');
 const speedSelect = document.querySelector('.speed-select');
 const speedControl = document.querySelector('.speed-control');
+const soundToggle = document.querySelector('.sound-toggle-input');
+levelSelectScreen.append(speedControl);
 const speedValue = document.querySelector('.speed-value');
 const scoreValue = document.querySelector('.score-value');
+const bestScoreLabel = document.querySelector('.best-score-label');
 const bestScoreValue = document.querySelector('.best-score-value');
 const levelValue = document.querySelector('.level-value');
 const remainingValue = document.querySelector('.remaining-value');
 const comboBoard = document.querySelector('.combo-board');
 const comboValue = document.querySelector('.combo-value');
+const comboMilestone = document.querySelector('.combo-milestone');
+const comboMilestoneKicker = document.querySelector('.combo-milestone-kicker');
+const comboMilestoneTitle = document.querySelector('.combo-milestone-title');
+const comboMilestoneDetail = document.querySelector('.combo-milestone-detail');
+const comboMilestoneFlash = document.querySelector('.combo-milestone-flash');
+const runCountdown = document.querySelector('.run-countdown');
+const runCountdownKicker = document.querySelector('.run-countdown-kicker');
+const runCountdownValue = document.querySelector('.run-countdown-value');
+const runCountdownDetail = document.querySelector('.run-countdown-detail');
 const perfectValue = document.querySelector('.perfect-value');
+const shardValue = document.querySelector('.shard-value');
+const missionBoard = document.querySelector('.mission-board');
 const missionValue = document.querySelector('.mission-value');
 const currentColorValue = document.querySelector('.current-color-value');
 const progressLabel = document.querySelector('.progress-label');
 const progressText = document.querySelector('.progress-text');
 const progressFill = document.querySelector('.progress-fill');
 const pauseButton = document.querySelector('.pause-button');
+const pausePanel = document.querySelector('.pause-panel');
+const pauseKicker = document.querySelector('.pause-kicker');
+const pauseTitle = document.querySelector('.pause-title');
+const pauseDetail = document.querySelector('.pause-detail');
 const resumeButton = document.querySelector('.resume-button');
 const pauseRetryButton = document.querySelector('.pause-retry-button');
 const pauseLevelsButton = document.querySelector('.pause-levels-button');
+const levelCompletePanel = document.querySelector('.level-complete-panel');
 const levelCompleteTitle = document.querySelector('.level-complete-title');
 const levelCompleteDetail = document.querySelector('.level-complete-detail');
 const levelCompleteStars = document.querySelector('.level-complete-stars');
+const levelCompleteRecord = document.querySelector('.level-complete-record');
+const levelCompleteCollection = document.querySelector('.level-complete-collection');
 const levelCompleteMission = document.querySelector('.level-complete-mission');
+const levelCompletePerformance = document.querySelector('.level-complete-performance');
+const levelCompleteNextGoal = document.querySelector('.level-complete-next-goal');
 const levelCompleteScore = document.querySelector('.level-complete-score');
 const nextLevelButton = document.querySelector('.next-level-button');
 const backToLevelsButton = document.querySelector('.back-to-levels-button');
@@ -79,7 +171,13 @@ const deathLevelsButton = document.querySelector('.death-levels-button');
 const deathRetryButton = document.querySelector('.death-retry-button');
 const deathScore = document.querySelector('.death-score');
 const deathReason = document.querySelector('.death-reason');
+const deathPanel = document.querySelector('.death-panel');
 const deathBest = document.querySelector('.death-best');
+const deathRecordDetail = document.querySelector('.death-record-detail');
+const deathProgressSummary = document.querySelector('.death-progress-summary');
+const deathProgressLabel = document.querySelector('.death-progress-label');
+const deathProgressText = document.querySelector('.death-progress-text');
+const deathProgressFill = document.querySelector('.death-progress-fill');
 const deathCombo = document.querySelector('.death-combo');
 const deathPerfect = document.querySelector('.death-perfect');
 const deathMission = document.querySelector('.death-mission');
@@ -92,7 +190,14 @@ let currentMode = 'level';
 let selectedSpeedLevel = Number(speedSelect.value);
 let currentSpeedLevel = selectedSpeedLevel;
 let speedPulseTimeoutId = null;
+let comboMilestoneTimeoutId = null;
 let hasSeenTutorial = readTutorialSeen();
+let soundEnabled = readSoundEnabled();
+const audioFeedback = createAudioFeedback();
+let isCoachBlocking = false;
+let isCountdownActive = false;
+let runCountdownTimeoutId = null;
+let runCountdownSequenceId = 0;
 let pointerStartX = null;
 let pointerStartY = null;
 
@@ -352,6 +457,8 @@ let targetBallX = 0;
 let score = 0;
 let currentBallColor = 'red';
 let bestScore = readBestScore();
+let endlessBestScore = readEndlessBestScore();
+let endlessPerformance = readEndlessPerformance();
 let currentLevel = 1;
 let levelStartLanding = 0;
 let levelEndLanding = levelCatalog[0].length;
@@ -359,9 +466,12 @@ let combo = 0;
 let maxCombo = 0;
 let perfectCount = 0;
 let rainbowCount = 0;
+let shardCount = 0;
+const collectedShardLandings = new Set();
 let completedLanding = 0;
 let unlockedLevel = readUnlockedLevel();
 let levelStars = readLevelStars();
+let levelPerformance = readLevelPerformance();
 
 function speedLevelToHopRate(level) {
   return 0.62 + (level - 1) * 0.11;
@@ -444,6 +554,14 @@ function getLevelLength(level) {
   return levelCatalog[level - 1]?.length ?? levelCatalog[levelCatalog.length - 1].length;
 }
 
+
+function getLevelRouteIntensity(level) {
+  return normalizeRouteIntensity(levelCatalog[level - 1]?.intensity);
+}
+
+function getLevelRouteDifficulty(level) {
+  return getRouteDifficulty(getLevelRouteIntensity(level));
+}
 function getLevelName(level) {
   return levelCatalog[level - 1]?.name ?? `未命名关卡 ${level}`;
 }
@@ -458,11 +576,54 @@ function pulseComboHud(value) {
   }
 }
 
+function hideComboMilestone() {
+  window.clearTimeout(comboMilestoneTimeoutId);
+  comboMilestoneTimeoutId = null;
+  comboMilestone.classList.remove('is-visible', 'is-major', 'is-perfect');
+  comboMilestoneFlash.classList.remove('is-visible', 'is-major', 'is-perfect');
+}
+
+function showComboMilestone(value, { perfect = false } = {}) {
+  const milestone = getComboMilestone(value);
+
+  if (!milestone) {
+    return false;
+  }
+
+  window.clearTimeout(comboMilestoneTimeoutId);
+  comboMilestoneKicker.textContent = milestone.kicker;
+  comboMilestoneTitle.textContent = milestone.title;
+  comboMilestoneDetail.textContent = milestone.detail;
+
+  comboMilestone.classList.remove('is-visible');
+  comboMilestoneFlash.classList.remove('is-visible');
+  void comboMilestone.offsetWidth;
+  void comboMilestoneFlash.offsetWidth;
+
+  const isMajor = milestone.level === 'major';
+  comboMilestone.classList.toggle('is-major', isMajor);
+  comboMilestone.classList.toggle('is-perfect', perfect);
+  comboMilestoneFlash.classList.toggle('is-major', isMajor);
+  comboMilestoneFlash.classList.toggle('is-perfect', perfect);
+  comboMilestone.classList.add('is-visible');
+  comboMilestoneFlash.classList.add('is-visible');
+
+  comboMilestoneTimeoutId = window.setTimeout(() => {
+    hideComboMilestone();
+  }, 980);
+
+  return true;
+}
+
 function setCombo(value) {
   combo = value;
   maxCombo = Math.max(maxCombo, combo);
   comboValue.textContent = String(combo);
   pulseComboHud(combo);
+
+  if (combo === 0) {
+    hideComboMilestone();
+  }
 }
 
 function setPerfectCount(value) {
@@ -476,16 +637,29 @@ function setRainbowCount(value) {
   updateMissionHud();
 }
 
+
+function setShardCount(value) {
+  shardCount = Math.max(0, Math.floor(Number(value) || 0));
+  shardValue.textContent = String(shardCount);
+  shardValue.classList.remove('is-shard-pop');
+  void shardValue.offsetWidth;
+  shardValue.classList.add('is-shard-pop');
+  updateMissionHud();
+}
 function getLevelMission(level) {
   return levelCatalog[level - 1]?.mission ?? { type: 'perfect', target: 1 };
 }
 
 function getMissionName(mission = getLevelMission(currentLevel)) {
-  return mission.type === 'rainbow' ? '\u5f69\u8679' : 'Perfect';
+  return getMissionTypeLabel(mission.type);
 }
 
 function getMissionProgress(mission = getLevelMission(currentLevel)) {
-  return mission.type === 'rainbow' ? rainbowCount : perfectCount;
+  return getMissionProgressValue(mission, {
+    perfect: perfectCount,
+    rainbow: rainbowCount,
+    shard: shardCount,
+  });
 }
 
 function getMissionTarget(mission = getLevelMission(currentLevel)) {
@@ -506,6 +680,12 @@ function getMissionProgressText(mission = getLevelMission(currentLevel)) {
   return `${getMissionName(mission)} ${progress}/${getMissionTarget(mission)}`;
 }
 
+
+function showMissionCompleteFeedback() {
+  missionBoard.classList.remove('is-mission-complete-pop');
+  void missionBoard.offsetWidth;
+  missionBoard.classList.add('is-mission-complete-pop');
+}
 function updateMissionHud() {
   missionValue.textContent = currentMode === 'endless' ? '--' : getMissionProgressText();
   missionValue.classList.toggle('is-complete', currentMode !== 'endless' && isMissionComplete());
@@ -559,8 +739,10 @@ function startLevel(level, startLandingIndex) {
   levelStartLanding = startLandingIndex;
   levelEndLanding = levelStartLanding + getLevelLength(currentLevel);
   maxCombo = 0;
+  missionBoard.classList.remove('is-mission-complete-pop');
   setPerfectCount(0);
   setRainbowCount(0);
+  setShardCount(0);
   updateMissionHud();
   updateLevelHud(startLandingIndex);
 }
@@ -584,37 +766,139 @@ function setTutorialSeen() {
   }
 }
 
+
+function clearRunCountdown() {
+  runCountdownSequenceId += 1;
+
+  if (runCountdownTimeoutId !== null) {
+    window.clearTimeout(runCountdownTimeoutId);
+    runCountdownTimeoutId = null;
+  }
+
+  isCountdownActive = false;
+  document.body.classList.remove('is-counting-down');
+  runCountdown.classList.remove('is-go', 'is-step-pulse');
+}
+
+function startRunCountdown() {
+  clearRunCountdown();
+
+  if (
+    !isGameRunning ||
+    isGameOver ||
+    isLevelComplete ||
+    isCoachBlocking
+  ) {
+    return false;
+  }
+
+  const sequenceId = runCountdownSequenceId;
+  const copy = getRunCountdownCopy({
+    levelName: getLevelName(currentLevel),
+    missionText: currentMode === 'level' ? getMissionSummary() : '',
+    mode: currentMode,
+    routeText: currentMode === 'level'
+      ? getRouteIntensityText(getLevelRouteIntensity(currentLevel))
+      : '',
+  });
+  let stepIndex = 0;
+
+  isCountdownActive = true;
+  document.body.classList.add('is-counting-down');
+  runCountdownKicker.textContent = copy.kicker;
+  runCountdownDetail.textContent = copy.detail;
+
+  const advance = () => {
+    if (
+      sequenceId !== runCountdownSequenceId ||
+      !isCountdownActive ||
+      !isGameRunning
+    ) {
+      return;
+    }
+
+    if (isPaused) {
+      runCountdownTimeoutId = window.setTimeout(advance, 120);
+      return;
+    }
+
+    const step = runCountdownSteps[stepIndex];
+    const isGoStep = step === 'GO!';
+
+    runCountdownValue.textContent = step;
+    runCountdown.classList.toggle('is-go', isGoStep);
+    runCountdown.classList.remove('is-step-pulse');
+    void runCountdown.offsetWidth;
+    runCountdown.classList.add('is-step-pulse');
+    playGameFeedback(isGoStep ? 'countdownGo' : 'countdown');
+
+    runCountdownTimeoutId = window.setTimeout(() => {
+      if (isGoStep) {
+        clearRunCountdown();
+        return;
+      }
+
+      stepIndex += 1;
+      advance();
+    }, getCountdownDelay(step));
+  };
+
+  advance();
+  return true;
+}
 function showCoachTipIfNeeded() {
-  coachTip.classList.toggle('is-visible', !hasSeenTutorial);
+  isCoachBlocking = !hasSeenTutorial;
+  coachTip.classList.toggle('is-visible', isCoachBlocking);
+  document.body.classList.toggle('is-coach-blocking', isCoachBlocking);
 }
 
 function hideCoachTip({ persist = false } = {}) {
+  isCoachBlocking = false;
   coachTip.classList.remove('is-visible');
+  document.body.classList.remove('is-coach-blocking');
 
   if (persist) {
     setTutorialSeen();
   }
 }
+function applyPauseCopy(reason = 'manual') {
+  const copy = getPauseCopy(reason);
+  pauseKicker.textContent = copy.kicker;
+  pauseTitle.textContent = copy.title;
+  pauseDetail.textContent = copy.detail;
+}
+
 function clearPauseState() {
   isPaused = false;
   document.body.classList.remove('is-paused');
+  pausePanel.classList.remove('is-auto-paused');
   pauseButton.textContent = '暂停';
   pauseButton.setAttribute('aria-pressed', 'false');
+  applyPauseCopy();
 }
 
-function setPaused(paused) {
+function setPaused(paused, reason = 'manual') {
   if (!isGameRunning || isGameOver || isLevelComplete) {
     return;
   }
 
   isPaused = paused;
   document.body.classList.toggle('is-paused', isPaused);
-  pauseButton.textContent = isPaused ? '\u5df2\u6682\u505c' : '\u6682\u505c';
+  pausePanel.classList.toggle(
+    'is-auto-paused',
+    isPaused && reason === 'background'
+  );
+  pauseButton.textContent = isPaused ? '已暂停' : '暂停';
   pauseButton.setAttribute('aria-pressed', String(isPaused));
+  applyPauseCopy(isPaused ? reason : 'manual');
+
+  if (isPaused) {
+    hideComboMilestone();
+  }
 }
 
 function togglePause() {
-  setPaused(!isPaused);
+  setPaused(!isPaused, 'manual');
 }
 
 function normalizeStars(stars) {
@@ -636,6 +920,29 @@ function getLevelStars(level) {
   return levelStars[level] ?? 0;
 }
 
+
+function readLevelPerformance() {
+  try {
+    const parsedRecords = JSON.parse(
+      localStorage.getItem(levelPerformanceStorageKey) ?? '{}'
+    );
+
+    return normalizeLevelPerformanceMap(parsedRecords);
+  } catch {
+    return {};
+  }
+}
+
+function writeLevelPerformance() {
+  try {
+    localStorage.setItem(
+      levelPerformanceStorageKey,
+      JSON.stringify(levelPerformance)
+    );
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+}
 function readLevelStars() {
   try {
     const parsedStars = JSON.parse(localStorage.getItem(levelStarsStorageKey) ?? '{}');
@@ -678,17 +985,11 @@ function setLevelStars(level, stars) {
 }
 
 function calculateLevelStars(level) {
-  const levelLength = getLevelLength(level);
-
-  if (perfectCount >= Math.ceil(levelLength * 0.8)) {
-    return 3;
-  }
-
-  if (perfectCount >= Math.ceil(levelLength * 0.5)) {
-    return 2;
-  }
-
-  return 1;
+  return calculateRewardStars({
+    levelLength: getLevelLength(level),
+    missionComplete: isMissionComplete(),
+    perfectCount,
+  });
 }
 
 function readUnlockedLevel() {
@@ -715,20 +1016,55 @@ function setUnlockedLevel(level) {
 }
 
 function renderLevelSelect() {
+  const isStarComplete = isStarCollectionComplete(levelStars, levelCatalog.length);
+  levelStarProgress.textContent = getStarProgressText(levelStars, levelCatalog.length);
+  levelStarRank.textContent = getStarProgressRank(levelStars, levelCatalog.length);
+  levelStarRank.classList.toggle('is-complete', isStarComplete);
+  levelStarProgress.classList.toggle('is-complete', isStarComplete);
+  levelStarProgressFill.classList.toggle('is-complete', isStarComplete);
+  levelStarProgressFill.style.width = `${getStarProgressPercent(levelStars, levelCatalog.length)}%`;
+  const recommendedLevel = getRecommendedLevel(
+    levelStars,
+    unlockedLevel,
+    levelCatalog.length
+  );
+  const recommendedStars = getLevelStars(recommendedLevel);
+  continueLevelButton.dataset.level = String(recommendedLevel);
+  continueLevelName.textContent =
+    '第 ' + recommendedLevel + ' 关 · ' + getLevelName(recommendedLevel);
+  continueLevelReason.textContent =
+    getRecommendedLevelReason(recommendedStars) + ' →';
   levelGrid.replaceChildren();
 
   levelCatalog.forEach((level, index) => {
     const levelNumber = index + 1;
     const isUnlocked = levelNumber <= unlockedLevel;
+    const earnedStars = getLevelStars(levelNumber);
+    const routeIntensity = normalizeRouteIntensity(level.intensity);
+    const performanceRecord = getLevelPerformance(levelPerformance, levelNumber);
+    const routeIntensityBars = getRouteIntensityStates(routeIntensity)
+      .map((isActive) => `<i class="${isActive ? 'is-active' : ''}"></i>`)
+      .join('');
+    const cardStatus = getLevelCardStatus(earnedStars, isUnlocked);
     const button = document.createElement('button');
-    button.className = 'level-card';
+    button.className = `level-card is-${cardStatus.key}`;
+    button.classList.toggle('is-recommended', levelNumber === recommendedLevel);
     button.type = 'button';
     button.disabled = !isUnlocked;
     button.innerHTML = `
-      <span class="level-card-index">第 ${levelNumber} 关</span>
+      <span class="level-card-heading">
+        <span class="level-card-index">\u7b2c ${levelNumber} \u5173</span>
+        <span class="level-card-status">${cardStatus.label}</span>
+      </span>
       <strong class="level-card-name">${level.name}</strong>
-      <span class="level-card-stars" aria-label="最高星级 ${getLevelStars(levelNumber)} 星">${getStarText(getLevelStars(levelNumber))}</span>
+      <span class="level-card-stars" aria-label="\u6700\u9ad8\u661f\u7ea7 ${earnedStars} \u661f">${getStarText(earnedStars)}</span>
+      <span class="level-card-performance">${getLevelPerformanceText(performanceRecord)}</span>
       <span class="level-card-mission">任务：${getMissionSummary(levelNumber)}</span>
+      <span class="level-card-intensity" data-intensity="${routeIntensity}" aria-label="${getRouteIntensityText(routeIntensity)}">
+        <span>\u8def\u7ebf</span>
+        <span class="level-card-intensity-bars" aria-hidden="true">${routeIntensityBars}</span>
+      </span>
+      <span class="level-card-goals">${getLevelGoalPreview(level)}</span>
       <span class="level-card-meta ${isUnlocked ? '' : 'level-card-lock'}">
         ${isUnlocked ? `${level.length} 跳到终点` : '先通关前一关'}
       </span>
@@ -753,9 +1089,12 @@ function setLevelSelectMode(mode) {
 }
 
 function completeLevel(landingIndex) {
+  clearRunCountdown();
   isGameRunning = false;
   isLevelComplete = true;
   clearPauseState();
+  hideComboMilestone();
+  playGameFeedback('complete');
   completedLanding = landingIndex;
   updateLevelHud(landingIndex);
 
@@ -764,7 +1103,23 @@ function completeLevel(landingIndex) {
   const completedLevel = currentLevel;
   const earnedStars = calculateLevelStars(completedLevel);
   const previousStars = getLevelStars(completedLevel);
+  const performanceResult = updateLevelPerformance(
+    levelPerformance,
+    completedLevel,
+    {
+      combo: maxCombo,
+      perfect: perfectCount,
+    }
+  );
+  levelPerformance = performanceResult.records;
+  writeLevelPerformance();
   const didImproveStars = setLevelStars(completedLevel, earnedStars);
+  levelCompletePanel.classList.toggle('is-star-improved', didImproveStars);
+  levelCompletePanel.classList.toggle(
+    'is-performance-improved',
+    performanceResult.didImprovePerfect || performanceResult.didImproveCombo
+  );
+  levelCompletePanel.classList.toggle('is-full-star', earnedStars === 3);
 
   if (hasNextLevel && unlockedLevel < nextLevel) {
     setUnlockedLevel(nextLevel);
@@ -779,13 +1134,19 @@ function completeLevel(landingIndex) {
     'aria-label',
     `\u672c\u6b21\u83b7\u5f97 ${earnedStars} \u661f\uff0c\u5386\u53f2\u6700\u9ad8 ${Math.max(previousStars, earnedStars)} \u661f`
   );
+  levelCompleteRecord.textContent = getStarRecordText(earnedStars, previousStars);
+  levelCompleteCollection.textContent = getStarCollectionSummary(
+    levelStars,
+    levelCatalog.length
+  );
+  levelCompletePerformance.textContent = getPerformanceResultText(performanceResult);
   levelCompleteMission.textContent = isMissionComplete()
     ? `\u4efb\u52a1\u5b8c\u6210\uff1a${getMissionProgressText()}`
     : `\u4efb\u52a1\u672a\u5b8c\u6210\uff1a${getMissionProgressText()}`;
-  const perfectSummary = `Perfect ${perfectCount}/${getLevelLength(completedLevel)}`;
-  levelCompleteScore.textContent = didImproveStars
-    ? `\u65b0\u661f\u7ea7\u7eaa\u5f55\uff01${perfectSummary}`
-    : `${perfectSummary} \u00b7 \u6700\u9ad8\u8fde\u51fb ${maxCombo}`;
+  levelCompleteNextGoal.textContent = getNextLevelGoalText(levelCatalog[nextLevel - 1]);
+  const perfectSummary = 'Perfect ' + perfectCount + '/' + getLevelLength(completedLevel);
+  levelCompleteScore.textContent =
+    perfectSummary + ' · 最高连击 ' + maxCombo;
   nextLevelButton.textContent = hasNextLevel ? '进入下一关' : '回到选关';
   gameMessage.textContent = `「${getLevelName(completedLevel)}」完成`;
   hideCoachTip();
@@ -806,11 +1167,16 @@ function continueToNextLevel() {
   isGameRunning = true;
   clearPauseState();
   startLevel(currentLevel + 1, completedLanding);
+  setRouteProfile({
+    difficulty: getLevelRouteDifficulty(currentLevel),
+    seed: getLevelRouteSeed(currentLevel),
+  }, completedLanding);
   setCombo(0);
   updateSpeedForScore(score);
   targetBallX = findValidPlatformForColor(completedLanding + 1, currentBallColor)?.x ?? ballX;
   gameMessage.textContent = `${getLevelName(currentLevel)}：还剩 ${getLevelLength(currentLevel)} 跳`;
   document.body.classList.remove('is-level-complete');
+  startRunCountdown();
 }
 
 function setBallColor(colorKey) {
@@ -825,26 +1191,126 @@ function setBallColor(colorKey) {
   currentColorValue.style.textShadow = `0 0 18px ${glowColor}`;
 }
 
-function readBestScore() {
+function readSoundEnabled() {
   try {
-    const storedScore = Number(localStorage.getItem(bestScoreStorageKey));
-    return Number.isFinite(storedScore) ? Math.max(0, storedScore) : 0;
+    return localStorage.getItem(soundEnabledStorageKey) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function updateSoundToggle() {
+  soundToggle.checked = soundEnabled;
+  soundToggle.setAttribute(
+    'aria-label',
+    soundEnabled ? '关闭音效' : '开启音效'
+  );
+  soundToggle
+    .closest('.sound-toggle')
+    .classList.toggle('is-enabled', soundEnabled);
+}
+
+function playGameFeedback(event, color = currentBallColor) {
+  if (soundEnabled) {
+    audioFeedback.play(event, color);
+  }
+}
+
+function setSoundEnabled(enabled) {
+  soundEnabled = Boolean(enabled);
+
+  try {
+    localStorage.setItem(soundEnabledStorageKey, String(soundEnabled));
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+
+  updateSoundToggle();
+
+  if (soundEnabled) {
+    audioFeedback.resume();
+    audioFeedback.play('toggle', 'blue');
+  }
+}
+
+function readStoredScore(storageKey) {
+  try {
+    return normalizeScore(localStorage.getItem(storageKey));
   } catch {
     return 0;
   }
 }
 
-function setBestScore(value) {
-  bestScore = value;
-  bestScoreValue.textContent = String(bestScore);
-
+function writeStoredScore(storageKey, value) {
   try {
-    localStorage.setItem(bestScoreStorageKey, String(bestScore));
+    localStorage.setItem(storageKey, String(normalizeScore(value)));
   } catch {
     // Local storage may be unavailable in restricted browser contexts.
   }
 }
 
+
+function readEndlessPerformance() {
+  try {
+    const parsedRecord = JSON.parse(
+      localStorage.getItem(endlessPerformanceStorageKey) ?? '{}'
+    );
+
+    return normalizeEndlessPerformance(parsedRecord, endlessBestScore);
+  } catch {
+    return normalizeEndlessPerformance({}, endlessBestScore);
+  }
+}
+
+function writeEndlessPerformance() {
+  try {
+    localStorage.setItem(
+      endlessPerformanceStorageKey,
+      JSON.stringify(endlessPerformance)
+    );
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+}
+
+function updateEndlessPerformanceDisplay() {
+  endlessPerformanceValue.textContent =
+    getEndlessPerformanceText(endlessPerformance);
+}
+function readBestScore() {
+  return readStoredScore(bestScoreStorageKey);
+}
+
+function readEndlessBestScore() {
+  return readStoredScore(endlessBestScoreStorageKey);
+}
+
+function getActiveBestScore() {
+  return currentMode === 'endless' ? endlessBestScore : bestScore;
+}
+
+function updateBestScoreDisplay() {
+  bestScoreLabel.textContent = currentMode === 'endless' ? '\u65e0\u5c3d\u6700\u4f73' : '\u6700\u4f73';
+  bestScoreValue.textContent = String(getActiveBestScore());
+
+  if (endlessBestValue) {
+    endlessBestValue.textContent = getBestScoreLabel('endless', endlessBestScore);
+  }
+
+  updateEndlessPerformanceDisplay();
+}
+
+function setBestScore(value) {
+  bestScore = normalizeScore(value);
+  updateBestScoreDisplay();
+  writeStoredScore(bestScoreStorageKey, bestScore);
+}
+
+function setEndlessBestScore(value) {
+  endlessBestScore = normalizeScore(value);
+  updateBestScoreDisplay();
+  writeStoredScore(endlessBestScoreStorageKey, endlessBestScore);
+}
 function getCurrentLaneIndex() {
   return lanePositions.reduce((closestIndex, laneX, index) => {
     const closestDistance = Math.abs(lanePositions[closestIndex] - targetBallX);
@@ -855,7 +1321,14 @@ function getCurrentLaneIndex() {
 }
 
 function shiftTargetLane(direction) {
-  if (!isGameRunning || isPaused || isGameOver || isLevelComplete) {
+  if (
+    !isGameRunning ||
+    isPaused ||
+    isCoachBlocking ||
+    isCountdownActive ||
+    isGameOver ||
+    isLevelComplete
+  ) {
     return;
   }
 
@@ -879,17 +1352,27 @@ window.__bounceBuddySimulateRoute = simulateReachableRoute;
 window.__bounceBuddyGetRouteSample = getRouteSample;
 
 function startRun(level = 1, mode = 'level') {
+  clearRunCountdown();
+  gameHud.append(speedControl);
+  if (soundEnabled) {
+    audioFeedback.resume();
+  }
   isGameRunning = true;
   isGameOver = false;
   isLevelComplete = false;
   currentMode = mode;
+  updateBestScoreDisplay();
   clearPauseState();
   hopProgress = 0;
   previousHop = 0;
   lastProcessedLanding = 0;
   completedLanding = 0;
   ballX = 0;
-  resetRoute();
+  resetRoute(
+    currentMode === 'endless' ? 1 : getLevelRouteDifficulty(level),
+    currentMode === 'level' ? getLevelRouteSeed(level) : undefined
+  );
+  collectedShardLandings.clear();
   setScore(0);
   setCombo(0);
   startLevel(level, 0);
@@ -904,6 +1387,9 @@ function startRun(level = 1, mode = 'level') {
   document.body.classList.remove('is-game-over');
   document.body.classList.remove('is-level-complete');
   speedSelect.disabled = true;
+  if (!isCoachBlocking) {
+    startRunCountdown();
+  }
   impactEffects.splice(0).forEach((effect) => {
     scene.remove(effect.ring);
     scene.remove(effect.sparks);
@@ -917,6 +1403,8 @@ function startRun(level = 1, mode = 'level') {
 }
 
 function showLevelSelect() {
+  clearRunCountdown();
+  levelSelectScreen.append(speedControl);
   isGameRunning = false;
   isGameOver = false;
   isLevelComplete = false;
@@ -933,10 +1421,12 @@ function showLevelSelect() {
 }
 
 function endGame(reason = '') {
+  clearRunCountdown();
   isGameRunning = false;
   isGameOver = true;
   isLevelComplete = false;
   clearPauseState();
+  playGameFeedback('death');
   document.body.classList.add('is-game-over');
   document.body.classList.remove('is-level-complete');
   speedSelect.disabled = false;
@@ -945,33 +1435,86 @@ function endGame(reason = '') {
   hideCoachTip();
   setCombo(0);
 
-  const finalMessage = reason || '游戏结束';
+  const endlessPerformanceResult = currentMode === 'endless'
+    ? updateEndlessPerformance(endlessPerformance, {
+      combo: maxCombo,
+      perfect: perfectCount,
+      score,
+      shards: shardCount,
+    })
+    : null;
 
-  if (score > bestScore) {
-    setBestScore(score);
-    gameMessage.textContent = `新纪录！最终得分 ${score}`;
-    deathReason.textContent = `新纪录！${finalMessage}`;
+  if (endlessPerformanceResult) {
+    endlessPerformance = endlessPerformanceResult.record;
+    writeEndlessPerformance();
+    updateEndlessPerformanceDisplay();
+  }
+
+  deathPanel.classList.toggle(
+    'is-record-improved',
+    Boolean(endlessPerformanceResult?.didImprove)
+  );
+  const finalMessage = reason || '\u6e38\u620f\u7ed3\u675f';
+  const previousBestScore = getActiveBestScore();
+
+  if (shouldUpdateBestScore(score, previousBestScore)) {
+    if (currentMode === 'endless') {
+      setEndlessBestScore(score);
+    } else {
+      setBestScore(score);
+    }
+
+    gameMessage.textContent = currentMode === 'endless'
+      ? `\u65e0\u5c3d\u65b0\u7eaa\u5f55\uff01\u6700\u7ec8\u5f97\u5206 ${score}`
+      : `\u65b0\u7eaa\u5f55\uff01\u6700\u7ec8\u5f97\u5206 ${score}`;
+    deathReason.textContent = currentMode === 'endless'
+      ? `\u65e0\u5c3d\u65b0\u7eaa\u5f55\uff01${finalMessage}`
+      : `\u65b0\u7eaa\u5f55\uff01${finalMessage}`;
   } else {
     gameMessage.textContent = reason
-      ? `${reason}，最终得分 ${score}`
-      : `游戏结束，最终得分 ${score}`;
+      ? `${reason}\uff0c\u6700\u7ec8\u5f97\u5206 ${score}`
+      : `\u6e38\u620f\u7ed3\u675f\uff0c\u6700\u7ec8\u5f97\u5206 ${score}`;
     deathReason.textContent = finalMessage;
   }
 
+  const completedJumps = currentMode === 'endless'
+    ? score
+    : Math.max(0, lastProcessedLanding - levelStartLanding - 1);
+  const deathProgress = getDeathProgressSummary({
+    completedJumps,
+    mode: currentMode,
+    totalJumps: getLevelLength(currentLevel),
+  });
+  deathProgressSummary.classList.toggle('is-endless', deathProgress.isEndless);
+  deathProgressSummary.setAttribute('aria-label', deathProgress.label);
+  deathProgressLabel.textContent = deathProgress.label;
+  deathProgressText.textContent = deathProgress.text;
+  deathProgressFill.style.width =
+    deathProgress.percent === null ? '0%' : deathProgress.percent + '%';
   deathScore.textContent = String(score);
-  deathBest.textContent = `最佳 ${bestScore}`;
+  deathBest.textContent = getBestScoreLabel(currentMode, getActiveBestScore());
+  deathRecordDetail.textContent = currentMode === 'endless'
+    ? getEndlessPerformanceResultText(endlessPerformanceResult)
+    : getLevelPerformanceText(
+      getLevelPerformance(levelPerformance, currentLevel)
+    );
   deathCombo.textContent = String(maxCombo);
   deathPerfect.textContent = String(perfectCount);
   deathMission.textContent = currentMode === 'endless' ? '无尽' : getMissionProgressText();
 }
 
-bestScoreValue.textContent = String(bestScore);
+updateSoundToggle();
+updateBestScoreDisplay();
 setBallColor(currentBallColor);
 setSpeedLevel(selectedSpeedLevel);
 setCombo(combo);
 updateLevelHud(0);
 renderLevelSelect();
 setLevelSelectMode('levels');
+
+soundToggle.addEventListener('change', () => {
+  setSoundEnabled(soundToggle.checked);
+});
 
 speedSelect.addEventListener('change', () => {
   setSpeedLevel(Number(speedSelect.value));
@@ -981,6 +1524,11 @@ modeTabs.forEach((tab) => {
   tab.addEventListener('click', () => {
     setLevelSelectMode(tab.dataset.modeTab);
   });
+});
+
+continueLevelButton.addEventListener('click', () => {
+  const level = Number(continueLevelButton.dataset.level);
+  startRun(Number.isFinite(level) ? level : 1);
 });
 
 endlessEntryCard.addEventListener('click', () => {
@@ -1009,6 +1557,7 @@ deathLevelsButton.addEventListener('click', () => {
 
 coachDismissButton.addEventListener('click', () => {
   hideCoachTip({ persist: true });
+  startRunCountdown();
 });
 
 pauseButton.addEventListener('click', () => {
@@ -1033,8 +1582,25 @@ touchControlButtons.forEach((button) => {
   });
 });
 
+document.addEventListener('visibilitychange', () => {
+  if (shouldAutoPause({
+    hidden: document.hidden,
+    isGameRunning,
+    isPaused,
+    isGameOver,
+    isLevelComplete,
+  })) {
+    setPaused(true, 'background');
+  }
+});
+
 window.addEventListener('keydown', (event) => {
-  if (event.code === 'Escape') {
+  if (
+    (event.code === 'Escape' || event.code === 'KeyP') &&
+    isGameRunning &&
+    !isGameOver &&
+    !isLevelComplete
+  ) {
     event.preventDefault();
     togglePause();
     return;
@@ -1079,11 +1645,11 @@ function animate() {
   timer.update();
   const delta = timer.getDelta();
 
-  if (isGameRunning && !isPaused) {
+  if (isGameRunning && !isPaused && !isCoachBlocking && !isCountdownActive) {
     hopProgress += hopRate * delta;
   }
 
-  if (!isPaused) {
+  if (!isPaused && !isCoachBlocking && !isCountdownActive) {
     ballX = THREE.MathUtils.lerp(ballX, targetBallX, 0.2);
   }
 
@@ -1110,7 +1676,13 @@ function animate() {
 
   const currentLanding = Math.floor(hopProgress);
 
-  while (isGameRunning && !isPaused && lastProcessedLanding < currentLanding) {
+  while (
+    isGameRunning &&
+    !isPaused &&
+    !isCoachBlocking &&
+    !isCountdownActive &&
+    lastProcessedLanding < currentLanding
+  ) {
     const landingIndex = lastProcessedLanding + 1;
     const landingZ = nearZ - landingIndex * landingGap;
     const platform = findPlatformAt(landingIndex, ballX);
@@ -1124,26 +1696,53 @@ function animate() {
     lastProcessedLanding = landingIndex;
 
     if (landed) {
+      const missionWasComplete = currentMode === 'level' && isMissionComplete();
       setScore(score + 1);
       setCombo(combo + 1);
       const isPerfectLanding = Math.abs(ballX - platform.x) < 0.36;
       if (isPerfectLanding) {
         setPerfectCount(perfectCount + 1);
       }
-      const didSpeedGoUp = updateSpeedForScore(score);
+      const didCollectShard = canCollectShard(
+        platform,
+        isPerfectLanding,
+        collectedShardLandings.has(landingIndex)
+      );
+      if (didCollectShard) {
+        collectedShardLandings.add(landingIndex);
+        setShardCount(shardCount + 1);
+      }
+      const shardMessage = didCollectShard ? ' · 星尘 +1' : '';
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
         setRainbowCount(rainbowCount + 1);
+      }
+      const didCompleteMission =
+        currentMode === 'level' &&
+        !missionWasComplete &&
+        isMissionComplete();
+      if (didCompleteMission) {
+        showMissionCompleteFeedback();
+      }
+      const missionMessage = didCompleteMission
+        ? ' · 任务完成'
+        : '';
+      const landingBonusMessage = shardMessage + missionMessage;
+      showComboMilestone(combo, { perfect: isPerfectLanding });
+      const didSpeedGoUp = updateSpeedForScore(score);
+      if (platform.type === 'wildcard') {
         const landingMessage = isPerfectLanding
-          ? `Perfect! 彩虹换色：${gameColors[platform.nextColor].label}`
-          : `彩虹换色：${gameColors[platform.nextColor].label}`;
+          ? `Perfect! 彩虹换色：${gameColors[platform.nextColor].label}${landingBonusMessage}`
+          : `彩虹换色：${gameColors[platform.nextColor].label}${landingBonusMessage}`;
         gameMessage.textContent = withSpeedUpFeedback(
           withComboFeedback(landingMessage, combo),
           didSpeedGoUp,
           currentSpeedLevel
         );
       } else {
-        const landingMessage = isPerfectLanding ? 'Perfect!' : '命中平台';
+        const landingMessage = isPerfectLanding
+          ? `Perfect!${landingBonusMessage}`
+          : '命中平台';
         gameMessage.textContent = withSpeedUpFeedback(
           withComboFeedback(landingMessage, combo),
           didSpeedGoUp,
@@ -1151,7 +1750,28 @@ function animate() {
         );
       }
 
-      if (currentMode === 'level' && landingIndex >= levelEndLanding) {
+      const completesLevel =
+        currentMode === 'level' && landingIndex >= levelEndLanding;
+
+      if (!completesLevel) {
+        let feedbackEvent = 'landing';
+
+        if (didCompleteMission) {
+          feedbackEvent = 'mission';
+        } else if (didCollectShard) {
+          feedbackEvent = 'shard';
+        } else if (didSpeedGoUp) {
+          feedbackEvent = 'speedUp';
+        } else if (platform.type === 'wildcard') {
+          feedbackEvent = 'rainbow';
+        } else if (isPerfectLanding) {
+          feedbackEvent = 'perfect';
+        }
+
+        playGameFeedback(feedbackEvent, impactColorKey);
+      }
+
+      if (completesLevel) {
         completeLevel(landingIndex);
       }
     } else {
@@ -1178,6 +1798,7 @@ function animate() {
     currentMode,
     currentLevel,
     isLevelComplete,
+    isCountdownActive,
     isPaused,
     levelEndLanding,
     remainingToGoal: Math.max(0, levelEndLanding - currentLanding),
@@ -1185,6 +1806,7 @@ function animate() {
     maxCombo,
     perfectCount,
     rainbowCount,
+    shardCount,
     mission: getMissionProgressText(),
     missionComplete: currentMode !== 'endless' && isMissionComplete(),
     routeSeed: getRouteSeed(),
@@ -1222,7 +1844,13 @@ function animate() {
       pad.visible = true;
       pad.position.set(platform.x, 0.08, padZ);
       pad.scale.setScalar(targetScale * landingScale);
-      applyPlatformVisual(pad, platform, isCurrentTarget, isFinishLanding);
+      applyPlatformVisual(
+        pad,
+        platform,
+        isCurrentTarget,
+        isFinishLanding,
+        platform.hasShard && !collectedShardLandings.has(landingIndex)
+      );
     }
   }
   updateLevelHud(currentLanding);
@@ -1239,7 +1867,7 @@ function animate() {
 
   for (let i = impactEffects.length - 1; i >= 0; i -= 1) {
     const effect = impactEffects[i];
-    if (!isPaused) {
+    if (!isPaused && !isCoachBlocking && !isCountdownActive) {
       effect.age += delta;
     }
     const progress = effect.age / effect.duration;

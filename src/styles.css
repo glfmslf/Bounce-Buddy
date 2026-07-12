@@ -177,8 +177,8 @@ canvas {
 
 .mode-tabs {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  width: min(360px, 100%);
+  grid-template-columns: repeat(3, 1fr);
+  width: min(430px, 100%);
   padding: 4px;
   border: 1px solid rgba(145, 247, 255, 0.22);
   border-radius: 999px;
@@ -2480,4 +2480,80 @@ body.is-low-power .achievement-toast.is-visible {
   animation: none;
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+.career-summary {
+  display: grid;
+  gap: 10px;
+  width: min(520px, 100%);
+  padding: 4px 0 10px;
+}
+
+.career-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.career-summary-heading strong {
+  color: #eaffff;
+  font-size: 14px;
+}
+
+.career-summary-detail {
+  color: rgba(145, 247, 255, 0.7);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.career-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.career-stat {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 9px 10px;
+  border-left: 2px solid rgba(145, 247, 255, 0.3);
+  background: rgba(5, 14, 28, 0.42);
+}
+
+.career-stat span {
+  color: rgba(223, 248, 255, 0.58);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.career-stat strong {
+  color: #ffef9a;
+  font-size: 17px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 420px) {
+  .mode-tab {
+    font-size: 12px;
+  }
+
+  .career-summary-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .career-summary-detail {
+    text-align: left;
+  }
+
+  .career-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

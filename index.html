@@ -26,17 +26,12 @@
           <p>发光星尘需要精准落在平台中心才能收集。</p>
           <p>普通关卡路线固定，重试可以记住节奏；无尽模式每局随机。</p>
         </div>
-        <div class="mode-tabs" aria-label="选择模式">
+        <div class="mode-tabs" aria-label="选择页面">
           <button class="mode-tab is-active" type="button" data-mode-tab="levels">普通关卡</button>
           <button class="mode-tab" type="button" data-mode-tab="endless">无尽模式</button>
+          <button class="mode-tab" type="button" data-mode-tab="career">生涯档案</button>
         </div>
-        <section class="achievement-panel" aria-label="生涯成就">
-          <div class="achievement-heading">
-            <span>生涯成就</span>
-            <strong class="achievement-count">0/6</strong>
-          </div>
-          <div class="achievement-grid"></div>
-        </section>
+
         <div class="level-mode-panel is-active" data-mode-panel="levels">
           <button class="continue-level-button" type="button">
             <span class="continue-level-kicker">继续挑战</span>
@@ -60,6 +55,22 @@
             </div>
             <p class="endless-history-empty">完成一局后，战绩会出现在这里。</p>
             <div class="endless-history-list"></div>
+          </section>
+        </div>
+        <div class="level-mode-panel" data-mode-panel="career">
+          <section class="career-summary" aria-label="生涯概览">
+            <div class="career-summary-heading">
+              <strong>生涯概览</strong>
+              <span class="career-summary-detail">完成度 0% · 无尽挑战 0 局</span>
+            </div>
+            <div class="career-stats-grid"></div>
+          </section>
+          <section class="achievement-panel" aria-label="生涯成就">
+            <div class="achievement-heading">
+              <span>生涯成就</span>
+              <strong class="achievement-count">0/6</strong>
+            </div>
+            <div class="achievement-grid"></div>
           </section>
         </div>
       </section>

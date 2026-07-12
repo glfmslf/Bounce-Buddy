@@ -31,6 +31,10 @@ import {
   resolveAchievements,
 } from './game/achievements.js';
 import {
+  getCareerStatItems,
+  getCareerSummary,
+} from './game/careerSummary.js';
+import {
   findPlatformAt,
   findValidPlatformForColor,
   getLandingPlatforms,
@@ -133,6 +137,8 @@ const endlessBestValue = document.querySelector('.endless-best-value');
 const endlessPerformanceValue = document.querySelector('.endless-performance-value');
 const endlessHistoryEmpty = document.querySelector('.endless-history-empty');
 const endlessHistoryList = document.querySelector('.endless-history-list');
+const careerStatsGrid = document.querySelector('.career-stats-grid');
+const careerSummaryDetail = document.querySelector('.career-summary-detail');
 const achievementCount = document.querySelector('.achievement-count');
 const achievementGrid = document.querySelector('.achievement-grid');
 const achievementToast = document.querySelector('.achievement-toast');
@@ -1202,7 +1208,29 @@ function setUnlockedLevel(level) {
   renderLevelSelect();
 }
 
+function renderCareerSummary() {
+  const summary = getCareerSummary({
+    endlessPerformance,
+    levelCount: levelCatalog.length,
+    levelPerformance,
+    levelStars,
+  });
+  careerSummaryDetail.textContent =
+    '完成度 ' + summary.completionPercent +
+    '% · 无尽挑战 ' + summary.endlessRuns + ' 局';
+  careerStatsGrid.replaceChildren();
+
+  getCareerStatItems(summary).forEach((stat) => {
+    const item = document.createElement('div');
+    item.className = 'career-stat';
+    item.innerHTML =
+      '<span>' + stat.label + '</span>' +
+      '<strong>' + stat.value + '</strong>';
+    careerStatsGrid.appendChild(item);
+  });
+}
 function renderLevelSelect() {
+  renderCareerSummary();
   renderAchievements();
   const isStarComplete = isStarCollectionComplete(levelStars, levelCatalog.length);
   levelStarProgress.textContent = getStarProgressText(levelStars, levelCatalog.length);

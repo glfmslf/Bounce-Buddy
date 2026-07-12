@@ -6,6 +6,7 @@ import {
   bestScoreStorageKey,
   endlessBestScoreStorageKey,
   endlessPerformanceStorageKey,
+  endlessRunHistoryStorageKey,
   bounceHeight,
   gameColors,
   landingGap,
@@ -52,6 +53,12 @@ import {
   normalizeEndlessPerformance,
   updateEndlessPerformance,
 } from './game/endlessPerformance.js';
+import {
+  appendEndlessRun,
+  getEndlessRunMeta,
+  getEndlessRunSummary,
+  normalizeEndlessRunHistory,
+} from './game/endlessRunHistory.js';
 import { getComboMilestone, withComboFeedback } from './game/comboFeedback.js';
 import {
   getCountdownDelay,
@@ -121,6 +128,8 @@ const modePanels = document.querySelectorAll('.level-mode-panel');
 const endlessEntryCard = document.querySelector('.endless-entry-card');
 const endlessBestValue = document.querySelector('.endless-best-value');
 const endlessPerformanceValue = document.querySelector('.endless-performance-value');
+const endlessHistoryEmpty = document.querySelector('.endless-history-empty');
+const endlessHistoryList = document.querySelector('.endless-history-list');
 const achievementCount = document.querySelector('.achievement-count');
 const achievementGrid = document.querySelector('.achievement-grid');
 const achievementToast = document.querySelector('.achievement-toast');
@@ -472,6 +481,7 @@ let currentBallColor = 'red';
 let bestScore = readBestScore();
 let endlessBestScore = readEndlessBestScore();
 let endlessPerformance = readEndlessPerformance();
+let endlessRunHistory = readEndlessRunHistory();
 let currentLevel = 1;
 let levelStartLanding = 0;
 let levelEndLanding = levelCatalog[0].length;
@@ -1392,9 +1402,53 @@ function writeEndlessPerformance() {
   }
 }
 
+function readEndlessRunHistory() {
+  try {
+    return normalizeEndlessRunHistory(
+      JSON.parse(localStorage.getItem(endlessRunHistoryStorageKey) ?? '[]')
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeEndlessRunHistory() {
+  try {
+    localStorage.setItem(
+      endlessRunHistoryStorageKey,
+      JSON.stringify(endlessRunHistory)
+    );
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+}
+
+function renderEndlessRunHistory() {
+  endlessHistoryEmpty.hidden = endlessRunHistory.length > 0;
+  endlessHistoryList.replaceChildren();
+
+  endlessRunHistory.forEach((run, index) => {
+    const item = document.createElement('div');
+    const isBest = run.score > 0 && run.score === endlessPerformance.bestScore;
+    item.className = 'endless-history-item';
+    item.classList.toggle('is-best', isBest);
+    item.innerHTML =
+      '<span class="endless-history-rank">' +
+        (index === 0 ? '最新' : '#' + (index + 1)) +
+      '</span>' +
+      '<span class="endless-history-copy">' +
+        '<strong>' + getEndlessRunSummary(run) + '</strong>' +
+        '<small>' + getEndlessRunMeta(run) + '</small>' +
+      '</span>' +
+      (isBest ? '<span class="endless-history-best">最佳</span>' : '');
+    endlessHistoryList.appendChild(item);
+  });
+}
+
 function updateEndlessPerformanceDisplay() {
   endlessPerformanceValue.textContent =
     getEndlessPerformanceText(endlessPerformance);
+  renderEndlessRunHistory();
 }
 function readBestScore() {
   return readStoredScore(bestScoreStorageKey);
@@ -1565,7 +1619,16 @@ function endGame(reason = '') {
 
   if (endlessPerformanceResult) {
     endlessPerformance = endlessPerformanceResult.record;
+    endlessRunHistory = appendEndlessRun(endlessRunHistory, {
+      combo: maxCombo,
+      perfect: perfectCount,
+      runNumber: endlessPerformance.runs,
+      score,
+      shards: shardCount,
+      speed: currentSpeedLevel,
+    });
     writeEndlessPerformance();
+    writeEndlessRunHistory();
     updateEndlessPerformanceDisplay();
   }
 

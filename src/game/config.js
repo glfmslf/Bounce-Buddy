@@ -1,6 +1,7 @@
 export const bestScoreStorageKey = 'bounceBuddyBestScore';
 export const endlessBestScoreStorageKey = 'bounceBuddyEndlessBestScore';
 export const endlessPerformanceStorageKey = 'bounceBuddyEndlessPerformance';
+export const endlessRunHistoryStorageKey = 'bounceBuddyEndlessRunHistory';
 export const tutorialSeenStorageKey = 'bounceBuddyTutorialSeen';
 export const soundEnabledStorageKey = 'bounceBuddySoundEnabled';
 export const speedUpScoreInterval = 10;

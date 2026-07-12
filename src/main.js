@@ -76,6 +76,7 @@ import {
   getNextLevelGoalText,
 } from './game/levelGoals.js';
 import { getLiveStarProgress } from './game/liveStarProgress.js';
+import { getLevelBriefing } from './game/levelBriefing.js';
 import { getLevelRouteSeed } from './game/levelRouteSeed.js';
 import {
   getLevelPerformance,
@@ -144,6 +145,20 @@ const achievementGrid = document.querySelector('.achievement-grid');
 const achievementToast = document.querySelector('.achievement-toast');
 const achievementToastTitle = document.querySelector('.achievement-toast-title');
 const achievementToastDetail = document.querySelector('.achievement-toast-detail');
+const levelBriefing = document.querySelector('.level-briefing');
+const levelBriefingKicker = document.querySelector('.level-briefing-kicker');
+const levelBriefingTitle = document.querySelector('.level-briefing-title');
+const levelBriefingSummary = document.querySelector('.level-briefing-summary');
+const levelBriefingRoute = document.querySelector('.level-briefing-route');
+const levelBriefingRouteText = document.querySelector('.level-briefing-route-text');
+const levelBriefingRouteBars = document.querySelector('.level-briefing-route-bars');
+const levelBriefingMission = document.querySelector('.level-briefing-mission');
+const levelBriefingTwoStar = document.querySelector('.level-briefing-two-star');
+const levelBriefingThreeStar = document.querySelector('.level-briefing-three-star');
+const levelBriefingStars = document.querySelector('.level-briefing-stars');
+const levelBriefingPerformance = document.querySelector('.level-briefing-performance');
+const levelBriefingCancel = document.querySelector('.level-briefing-cancel');
+const levelBriefingStart = document.querySelector('.level-briefing-start');
 const touchControlButtons = document.querySelectorAll('.touch-control-button');
 const coachTip = document.querySelector('.coach-tip');
 const coachDismissButton = document.querySelector('.coach-dismiss-button');
@@ -236,6 +251,8 @@ let runCountdownTimeoutId = null;
 let runCountdownSequenceId = 0;
 let pointerStartX = null;
 let pointerStartY = null;
+let briefingLevel = 1;
+let briefingReturnFocus = null;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07111f);
@@ -1287,11 +1304,61 @@ function renderLevelSelect() {
     `;
 
     button.addEventListener('click', () => {
-      startRun(levelNumber);
+      openLevelBriefing(levelNumber, button);
     });
 
     levelGrid.appendChild(button);
   });
+}
+
+function openLevelBriefing(level, trigger = null) {
+  const safeLevel = THREE.MathUtils.clamp(
+    Math.floor(Number(level) || 1),
+    1,
+    unlockedLevel
+  );
+  const briefing = getLevelBriefing({
+    baseSpeed: selectedSpeedLevel + Math.floor((safeLevel - 1) * 0.75),
+    level: levelCatalog[safeLevel - 1],
+    levelNumber: safeLevel,
+    performance: getLevelPerformance(levelPerformance, safeLevel),
+    stars: getLevelStars(safeLevel),
+  });
+
+  briefingLevel = safeLevel;
+  briefingReturnFocus = trigger instanceof HTMLElement
+    ? trigger
+    : document.activeElement;
+  levelBriefingKicker.textContent = briefing.kicker;
+  levelBriefingTitle.textContent = briefing.title;
+  levelBriefingSummary.textContent = briefing.summary;
+  levelBriefingRoute.dataset.intensity = String(briefing.intensity);
+  levelBriefingRouteText.textContent = briefing.routeText;
+  levelBriefingRouteBars.innerHTML = getRouteIntensityStates(briefing.intensity)
+    .map((isActive) => `<i class="${isActive ? 'is-active' : ''}"></i>`)
+    .join('');
+  levelBriefingMission.textContent = getMissionSummary(safeLevel);
+  levelBriefingTwoStar.textContent = briefing.twoStarText;
+  levelBriefingThreeStar.textContent = briefing.threeStarText;
+  levelBriefingStars.textContent = briefing.starText;
+  levelBriefingPerformance.textContent = briefing.recordText;
+  levelBriefingStart.textContent = briefing.actionLabel;
+  levelBriefing.setAttribute('aria-hidden', 'false');
+  levelSelectScreen.inert = true;
+  document.body.classList.add('is-level-briefing');
+  levelBriefingStart.focus();
+}
+
+function closeLevelBriefing({ restoreFocus = true } = {}) {
+  levelBriefing.setAttribute('aria-hidden', 'true');
+  levelSelectScreen.inert = false;
+  document.body.classList.remove('is-level-briefing');
+
+  if (restoreFocus && briefingReturnFocus instanceof HTMLElement) {
+    briefingReturnFocus.focus();
+  }
+
+  briefingReturnFocus = null;
 }
 
 function setLevelSelectMode(mode) {
@@ -1709,6 +1776,7 @@ function startRun(level = 1, mode = 'level') {
 
 function showLevelSelect() {
   clearRunCountdown();
+  closeLevelBriefing({ restoreFocus: false });
   levelSelectScreen.append(speedControl);
   isGameRunning = false;
   isGameOver = false;
@@ -1848,7 +1916,22 @@ modeTabs.forEach((tab) => {
 
 continueLevelButton.addEventListener('click', () => {
   const level = Number(continueLevelButton.dataset.level);
-  startRun(Number.isFinite(level) ? level : 1);
+  openLevelBriefing(Number.isFinite(level) ? level : 1, continueLevelButton);
+});
+
+levelBriefingCancel.addEventListener('click', () => {
+  closeLevelBriefing();
+});
+
+levelBriefingStart.addEventListener('click', () => {
+  closeLevelBriefing({ restoreFocus: false });
+  startRun(briefingLevel);
+});
+
+levelBriefing.addEventListener('click', (event) => {
+  if (event.target === levelBriefing) {
+    closeLevelBriefing();
+  }
 });
 
 endlessEntryCard.addEventListener('click', () => {
@@ -1915,6 +1998,26 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('keydown', (event) => {
+  if (document.body.classList.contains('is-level-briefing')) {
+    if (event.code === 'Escape') {
+      event.preventDefault();
+      closeLevelBriefing();
+      return;
+    }
+
+    if (event.code === 'Tab') {
+      const firstButton = levelBriefingCancel;
+      const lastButton = levelBriefingStart;
+      const isLeavingStart = !event.shiftKey && document.activeElement === lastButton;
+      const isLeavingCancel = event.shiftKey && document.activeElement === firstButton;
+
+      if (isLeavingStart || isLeavingCancel) {
+        event.preventDefault();
+        (isLeavingStart ? firstButton : lastButton).focus();
+      }
+    }
+  }
+
   if (
     (event.code === 'Escape' || event.code === 'KeyP') &&
     isGameRunning &&

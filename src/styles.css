@@ -2323,3 +2323,71 @@ body.is-level-complete .run-countdown {
     justify-self: start;
   }
 }
+
+.live-star-board {
+  display: none;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 10px;
+  width: 260px;
+  order: 18;
+  padding: 8px 11px;
+  color: rgba(223, 248, 255, 0.72);
+  border: 1px solid rgba(255, 210, 87, 0.22);
+  border-radius: 8px;
+  background: rgba(5, 14, 28, 0.38);
+  backdrop-filter: blur(12px);
+}
+
+.live-star-board > span {
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.live-star-value {
+  justify-self: end;
+  color: #ffef9a;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 16px rgba(255, 210, 87, 0.34);
+}
+
+.live-star-detail {
+  grid-column: 1 / -1;
+  color: rgba(145, 247, 255, 0.74);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.live-star-board.is-full-star {
+  border-color: rgba(255, 210, 87, 0.54);
+  box-shadow: 0 0 22px rgba(255, 210, 87, 0.12);
+}
+
+.live-star-board.is-full-star .live-star-value,
+.live-star-board.is-full-star .live-star-detail {
+  color: #ffef9a;
+}
+
+.live-star-board.is-endless {
+  border-color: rgba(145, 247, 255, 0.18);
+}
+
+.live-star-board.is-endless .live-star-value,
+.live-star-board.is-endless .live-star-detail {
+  color: rgba(223, 248, 255, 0.56);
+  text-shadow: none;
+}
+
+body.is-playing:not(.is-game-over) .live-star-board {
+  display: grid;
+}
+
+@media (max-width: 560px) {
+  body.is-playing:not(.is-game-over) .live-star-board {
+    width: 100%;
+  }
+}

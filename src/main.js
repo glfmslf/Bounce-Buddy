@@ -70,6 +70,7 @@ import {
   getLevelGoalPreview,
   getNextLevelGoalText,
 } from './game/levelGoals.js';
+import { getLiveStarProgress } from './game/liveStarProgress.js';
 import { getLevelRouteSeed } from './game/levelRouteSeed.js';
 import {
   getLevelPerformance,
@@ -164,6 +165,9 @@ const perfectValue = document.querySelector('.perfect-value');
 const shardValue = document.querySelector('.shard-value');
 const missionBoard = document.querySelector('.mission-board');
 const missionValue = document.querySelector('.mission-value');
+const liveStarBoard = document.querySelector('.live-star-board');
+const liveStarValue = document.querySelector('.live-star-value');
+const liveStarDetail = document.querySelector('.live-star-detail');
 const currentColorValue = document.querySelector('.current-color-value');
 const progressLabel = document.querySelector('.progress-label');
 const progressText = document.querySelector('.progress-text');
@@ -813,9 +817,40 @@ function showMissionCompleteFeedback() {
   void missionBoard.offsetWidth;
   missionBoard.classList.add('is-mission-complete-pop');
 }
+function updateLiveStarHud(currentLandingIndex = Math.floor(hopProgress)) {
+  if (currentMode === 'endless') {
+    liveStarBoard.classList.add('is-endless');
+    liveStarBoard.classList.remove('is-full-star');
+    liveStarValue.textContent = '---';
+    liveStarDetail.textContent = '无尽模式不计星';
+    liveStarBoard.setAttribute('aria-label', '无尽模式不计算关卡星级');
+    return;
+  }
+
+  const completedJumps = THREE.MathUtils.clamp(
+    currentLandingIndex - levelStartLanding,
+    0,
+    getLevelLength(currentLevel)
+  );
+  const progress = getLiveStarProgress({
+    completedJumps,
+    levelLength: getLevelLength(currentLevel),
+    missionComplete: isMissionComplete(),
+    perfectCount,
+  });
+  liveStarBoard.classList.remove('is-endless');
+  liveStarBoard.classList.toggle('is-full-star', progress.stars === 3);
+  liveStarValue.textContent = progress.starText;
+  liveStarDetail.textContent = progress.detail;
+  liveStarBoard.setAttribute(
+    'aria-label',
+    '本局星级进度 ' + progress.stars + ' 星，' + progress.detail
+  );
+}
 function updateMissionHud() {
   missionValue.textContent = currentMode === 'endless' ? '--' : getMissionProgressText();
   missionValue.classList.toggle('is-complete', currentMode !== 'endless' && isMissionComplete());
+  updateLiveStarHud();
 }
 function updateRunProgress(currentLandingIndex = Math.floor(hopProgress)) {
   if (!progressFill) {
@@ -851,6 +886,7 @@ function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
     levelValue.textContent = '无尽';
     remainingValue.textContent = '∞';
     updateRunProgress(currentLandingIndex);
+    updateLiveStarHud(currentLandingIndex);
     return;
   }
 
@@ -859,6 +895,7 @@ function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
   levelValue.textContent = String(currentLevel);
   remainingValue.textContent = String(remainingJumps);
   updateRunProgress(currentLandingIndex);
+  updateLiveStarHud(currentLandingIndex);
 }
 
 function startLevel(level, startLandingIndex) {

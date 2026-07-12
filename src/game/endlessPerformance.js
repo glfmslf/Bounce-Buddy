@@ -1,3 +1,5 @@
+import { normalizePrecisionCombo } from './comboFeedback.js';
+
 function normalizeCount(value) {
   const numericValue = Number(value);
 
@@ -9,9 +11,11 @@ function normalizeCount(value) {
 }
 
 export function normalizeEndlessPerformance(record, fallbackScore = 0) {
+  const bestPerfect = normalizeCount(record?.bestPerfect);
+
   return {
-    bestCombo: normalizeCount(record?.bestCombo),
-    bestPerfect: normalizeCount(record?.bestPerfect),
+    bestCombo: normalizePrecisionCombo(record?.bestCombo, bestPerfect),
+    bestPerfect,
     bestScore: Math.max(
       normalizeCount(record?.bestScore),
       normalizeCount(fallbackScore)
@@ -23,9 +27,10 @@ export function normalizeEndlessPerformance(record, fallbackScore = 0) {
 
 export function updateEndlessPerformance(record, run = {}) {
   const previous = normalizeEndlessPerformance(record);
+  const perfect = normalizeCount(run.perfect);
   const values = {
-    combo: normalizeCount(run.combo),
-    perfect: normalizeCount(run.perfect),
+    combo: normalizePrecisionCombo(run.combo, perfect),
+    perfect,
     score: normalizeCount(run.score),
     shards: normalizeCount(run.shards),
   };

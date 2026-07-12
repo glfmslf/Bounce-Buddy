@@ -64,7 +64,12 @@ import {
   getEndlessRunSummary,
   normalizeEndlessRunHistory,
 } from './game/endlessRunHistory.js';
-import { getComboMilestone, withComboFeedback } from './game/comboFeedback.js';
+import {
+  getComboBreakFeedbackText,
+  getComboMilestone,
+  getNextPrecisionCombo,
+  withComboFeedback,
+} from './game/comboFeedback.js';
 import {
   getCountdownDelay,
   getRunCountdownCopy,
@@ -2158,9 +2163,14 @@ function animate() {
 
     if (landed) {
       const missionWasComplete = currentMode === 'level' && isMissionComplete();
-      setScore(score + 1);
-      setCombo(combo + 1);
       const isPerfectLanding = Math.abs(ballX - platform.x) < 0.36;
+      const previousCombo = combo;
+      const comboBreakText = getComboBreakFeedbackText(
+        previousCombo,
+        isPerfectLanding
+      );
+      setScore(score + 1);
+      setCombo(getNextPrecisionCombo(previousCombo, isPerfectLanding));
       if (isPerfectLanding) {
         setPerfectCount(perfectCount + 1);
       }
@@ -2174,6 +2184,9 @@ function animate() {
         setShardCount(shardCount + 1);
       }
       const shardMessage = didCollectShard ? ' · 星尘 +1' : '';
+      const comboBreakMessage = comboBreakText
+        ? ' · ' + comboBreakText
+        : '';
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
         setRainbowCount(rainbowCount + 1);
@@ -2188,7 +2201,8 @@ function animate() {
       const missionMessage = didCompleteMission
         ? ' · 任务完成'
         : '';
-      const landingBonusMessage = shardMessage + missionMessage;
+      const landingBonusMessage =
+        shardMessage + missionMessage + comboBreakMessage;
       showComboMilestone(combo, { perfect: isPerfectLanding });
       const didSpeedGoUp = updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
@@ -2203,7 +2217,7 @@ function animate() {
       } else {
         const landingMessage = isPerfectLanding
           ? `Perfect!${landingBonusMessage}`
-          : '命中平台';
+          : '命中平台' + landingBonusMessage;
         gameMessage.textContent = withSpeedUpFeedback(
           withComboFeedback(landingMessage, combo),
           didSpeedGoUp,
@@ -2225,6 +2239,8 @@ function animate() {
           feedbackEvent = 'speedUp';
         } else if (platform.type === 'wildcard') {
           feedbackEvent = 'rainbow';
+        } else if (comboBreakText) {
+          feedbackEvent = 'comboBreak';
         } else if (isPerfectLanding) {
           feedbackEvent = 'perfect';
         }

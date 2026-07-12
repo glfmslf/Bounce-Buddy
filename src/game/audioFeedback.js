@@ -67,6 +67,15 @@ export function getFeedbackSequence(event, color = 'red') {
         tone(523, { delay: 0.06, duration: 0.1, gain: 0.027 }),
         tone(784, { delay: 0.12, duration: 0.16, gain: 0.03 }),
       ];
+    case 'comboBreak':
+      return [
+        tone(294, {
+          duration: 0.14,
+          endFrequency: 196,
+          gain: 0.02,
+          type: 'triangle',
+        }),
+      ];
     case 'death':
       return [
         tone(180, {

@@ -50,7 +50,9 @@ import {
   simulateReachableRoute,
 } from './game/route.js';
 import {
+  applyFinishGateVisual,
   applyPlatformVisual,
+  createFinishGate,
   createLandingPads,
 } from './scene/platforms.js';
 import { createAudioFeedback } from './game/audioFeedback.js';
@@ -71,6 +73,10 @@ import {
   getNextLandingCombo,
   withComboFeedback,
 } from './game/comboFeedback.js';
+import {
+  getFinishGateState,
+  isEnteringFinishApproach,
+} from './game/finishGate.js';
 import {
   canUseReboundShield,
   getReboundShieldProgress,
@@ -219,6 +225,7 @@ const scoreValue = document.querySelector('.score-value');
 const bestScoreLabel = document.querySelector('.best-score-label');
 const bestScoreValue = document.querySelector('.best-score-value');
 const levelValue = document.querySelector('.level-value');
+const remainingBoard = document.querySelector('.remaining-board');
 const remainingValue = document.querySelector('.remaining-value');
 const comboBoard = document.querySelector('.combo-board');
 const comboValue = document.querySelector('.combo-value');
@@ -618,6 +625,7 @@ const impactMaterial = new THREE.MeshBasicMaterial({
 });
 
 const landingPads = createLandingPads(scene);
+const finishGate = createFinishGate(scene);
 
 function clearImpactEffects() {
   impactEffects.splice(0).forEach((effect) => {
@@ -1333,8 +1341,15 @@ function updateRunProgress(currentLandingIndex = Math.floor(hopProgress)) {
   progressFill.style.width = `${progressPercent}%`;
 }
 
+function clearFinishPresentation() {
+  remainingBoard.classList.remove('is-finish-near');
+  document.body.classList.remove('is-finish-near', 'is-finish-crossed');
+}
+
 function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
   if (currentMode === 'endless') {
+    remainingBoard.classList.remove('is-finish-near');
+    document.body.classList.remove('is-finish-near');
     levelValue.textContent = '无尽';
     remainingValue.textContent = '∞';
     updateRunProgress(currentLandingIndex);
@@ -1342,8 +1357,16 @@ function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
     return;
   }
 
-  const remainingJumps = Math.max(0, levelEndLanding - currentLandingIndex);
+  const finishState = getFinishGateState({
+    currentLanding: currentLandingIndex,
+    endLanding: levelEndLanding,
+    mode: currentMode,
+    visibleLandingCount,
+  });
+  const remainingJumps = finishState.remaining;
 
+  remainingBoard.classList.toggle('is-finish-near', finishState.isNear);
+  document.body.classList.toggle('is-finish-near', finishState.isNear);
   levelValue.textContent = String(currentLevel);
   remainingValue.textContent = String(remainingJumps);
   updateRunProgress(currentLandingIndex);
@@ -1352,6 +1375,7 @@ function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
 
 function startLevel(level, startLandingIndex) {
   currentLevel = level;
+  clearFinishPresentation();
   syncSceneTheme();
   levelStartLanding = startLandingIndex;
   levelEndLanding = levelStartLanding + getLevelLength(currentLevel);
@@ -1789,6 +1813,7 @@ function completeLevel(landingIndex) {
   resetFocusAbility();
   resetOverload();
   hideComboMilestone();
+  document.body.classList.add('is-finish-crossed');
   playGameFeedback('complete');
   completedLanding = landingIndex;
   updateLevelHud(landingIndex);
@@ -2257,6 +2282,7 @@ function showLevelSelect() {
   resetFocusAbility();
   resetOverload();
   resetReboundShield();
+  clearFinishPresentation();
   document.body.classList.remove('is-playing');
   document.body.classList.remove('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -2277,6 +2303,7 @@ function endGame(reason = '') {
   resetFocusAbility();
   resetOverload();
   resetReboundShield();
+  clearFinishPresentation();
   playGameFeedback('death');
   document.body.classList.add('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -2701,6 +2728,14 @@ function animate() {
             ? '\u4e13\u6ce8 +' + specialFocusGain
             : '\u4e13\u6ce8\u5df2\u6ee1')
         : '';
+      const didEnterFinishApproach = isEnteringFinishApproach({
+        endLanding: levelEndLanding,
+        landingIndex,
+        mode: currentMode,
+      });
+      const finishApproachMessage = didEnterFinishApproach
+        ? ' \u00b7 \u7ec8\u70b9\u8fdb\u5165\u89c6\u91ce'
+        : '';
       const landingBonusMessage =
         shardMessage +
         missionMessage +
@@ -2708,7 +2743,8 @@ function animate() {
         overloadMessage +
         phaseMessage +
         driftMessage +
-        reboundShieldMessage;
+        reboundShieldMessage +
+        finishApproachMessage;
       showComboMilestone(combo, {
         perfect: isPerfectLanding,
         shieldCharged: didChargeReboundShield,
@@ -2742,6 +2778,8 @@ function animate() {
 
         if (didCompleteMission) {
           feedbackEvent = 'mission';
+        } else if (didEnterFinishApproach) {
+          feedbackEvent = 'finishNear';
         } else if (didChargeReboundShield) {
           feedbackEvent = 'reboundReady';
         } else if (didCollectShard) {
@@ -2798,6 +2836,12 @@ function animate() {
   const nextDriftState = nextPlatform?.type === 'drift'
     ? getDriftPlatformState(nextPlatform, phaseElapsedSeconds)
     : null;
+  const finishGateState = getFinishGateState({
+    currentLanding,
+    endLanding: levelEndLanding,
+    mode: currentMode,
+    visibleLandingCount,
+  });
   window.__bounceBuddyDebug = {
     ballY: ball.position.y,
     ballZ: ball.position.z,
@@ -2835,12 +2879,24 @@ function animate() {
     focusRemaining,
     reboundShieldReady,
     reboundShieldProgress: getReboundShieldProgress(combo, reboundShieldReady),
+    finishGate: finishGateState,
+    finishGateObjectCount: 1 + finishGate.children.length,
     overloadActive: isOverloadActive(overloadState),
     overloadRemaining: overloadState.remainingLandings,
     nextPhaseState,
     nextDriftState,
     hopTimeScale,
   };
+
+  applyFinishGateVisual(finishGate, {
+    elapsedSeconds: phaseElapsedSeconds,
+    isNear: finishGateState.isNear || isLevelComplete,
+    lowPower: lowPowerEnabled,
+    visible: (isGameRunning || isLevelComplete) && (
+      finishGateState.visible || (isLevelComplete && currentMode === 'level')
+    ),
+    z: nearZ - levelEndLanding * landingGap,
+  });
 
   targetMarker.visible = isGameRunning && !isPaused && !isLevelComplete;
   targetMarker.position.set(targetBallX, 0.13, nextPadZ);

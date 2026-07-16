@@ -43,6 +43,12 @@ export function getFeedbackSequence(event, color = 'red') {
         tone(659, { duration: 0.075, gain: 0.022, type: 'triangle' }),
         tone(988, { delay: 0.055, duration: 0.13, gain: 0.026 }),
       ];
+    case 'finishNear':
+      return [
+        tone(392, { duration: 0.08, gain: 0.022, type: 'triangle' }),
+        tone(784, { delay: 0.07, duration: 0.14, gain: 0.028, type: 'sine' }),
+        tone(1175, { delay: 0.15, duration: 0.2, gain: 0.026, type: 'triangle' }),
+      ];
     case 'mission':
       return [
         tone(523, { duration: 0.08, gain: 0.026, type: 'triangle' }),

@@ -20,6 +20,10 @@ const precisionZoneGeometry = new THREE.RingGeometry(
 );
 const finishRingGeometry = new THREE.RingGeometry(0.48, 0.62, 72);
 const finishLineGeometry = new THREE.BoxGeometry(1.24, 0.026, 0.08);
+const finishGatePostGeometry = new THREE.BoxGeometry(0.18, 3.2, 0.18);
+const finishGateBeamGeometry = new THREE.BoxGeometry(7.6, 0.18, 0.18);
+const finishGateHaloGeometry = new THREE.TorusGeometry(2.72, 0.045, 8, 96);
+const finishGateNodeGeometry = new THREE.OctahedronGeometry(0.11, 0);
 const overloadRingGeometry = new THREE.RingGeometry(0.48, 0.66, 48);
 const phaseRingGeometry = new THREE.RingGeometry(0.48, 0.67, 6);
 const driftRailGeometry = new THREE.BoxGeometry(2.4, 0.022, 0.07);
@@ -86,6 +90,29 @@ const finishGoalMaterial = new THREE.MeshBasicMaterial({
   blending: THREE.AdditiveBlending,
   depthWrite: false,
   side: THREE.DoubleSide,
+});
+const finishGateFrameMaterial = new THREE.MeshStandardMaterial({
+  color: 0x12324f,
+  emissive: 0x29d7ff,
+  emissiveIntensity: 1.1,
+  roughness: 0.24,
+  metalness: 0.56,
+  transparent: true,
+  opacity: 0.82,
+});
+const finishGateGoldMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffef9a,
+  transparent: true,
+  opacity: 0.82,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const finishGateCyanMaterial = new THREE.MeshBasicMaterial({
+  color: 0x91f7ff,
+  transparent: true,
+  opacity: 0.64,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
 });
 const overloadRingMaterial = new THREE.MeshBasicMaterial({
   color: overloadPad.edge,
@@ -238,6 +265,85 @@ export function createLandingPads(scene) {
   }
 
   return landingPads;
+}
+
+export function createFinishGate(scene) {
+  const gate = new THREE.Group();
+  const frameMaterial = finishGateFrameMaterial.clone();
+  const posts = [-3.55, 3.55].map((x) => {
+    const post = new THREE.Mesh(finishGatePostGeometry, frameMaterial);
+    post.position.set(x, 1.6, 0);
+    return post;
+  });
+  const beam = new THREE.Mesh(finishGateBeamGeometry, frameMaterial);
+  beam.position.set(0, 3.15, 0);
+  const halos = [finishGateGoldMaterial, finishGateCyanMaterial].map(
+    (material, index) => {
+      const halo = new THREE.Mesh(finishGateHaloGeometry, material.clone());
+      halo.position.set(0, 2.78, index * 0.08 - 0.04);
+      halo.scale.setScalar(1 - index * 0.06);
+      return halo;
+    }
+  );
+  const nodes = Array.from({ length: 10 }, (_, index) => {
+    const angle = (index / 10) * Math.PI * 2;
+    const node = new THREE.Mesh(
+      finishGateNodeGeometry,
+      (index % 2 === 0 ? finishGateGoldMaterial : finishGateCyanMaterial).clone()
+    );
+    node.position.set(
+      Math.cos(angle) * 2.72,
+      2.78 + Math.sin(angle) * 2.72,
+      0.06
+    );
+    return node;
+  });
+
+  gate.add(...posts, beam, ...halos, ...nodes);
+  gate.visible = false;
+  gate.userData.frameMaterial = frameMaterial;
+  gate.userData.halos = halos;
+  gate.userData.nodes = nodes;
+  scene.add(gate);
+  return gate;
+}
+
+export function applyFinishGateVisual(
+  gate,
+  {
+    elapsedSeconds = 0,
+    isNear = false,
+    lowPower = false,
+    visible = false,
+    z = 0,
+  } = {}
+) {
+  gate.visible = visible;
+
+  if (!visible) {
+    return;
+  }
+
+  const pulse = lowPower
+    ? 0
+    : (Math.sin(elapsedSeconds * (isNear ? 5.2 : 2.6)) + 1) / 2;
+  const glow = isNear ? 1.45 + pulse * 0.75 : 0.9 + pulse * 0.35;
+  gate.position.set(0, 0, z);
+  gate.userData.frameMaterial.emissiveIntensity = glow;
+  gate.userData.frameMaterial.opacity = isNear ? 0.94 : 0.76;
+  gate.userData.halos.forEach((halo, index) => {
+    halo.material.opacity = (isNear ? 0.82 : 0.48) + pulse * (0.16 - index * 0.03);
+    halo.rotation.z = lowPower
+      ? 0
+      : elapsedSeconds * (index === 0 ? 0.16 : -0.12);
+  });
+  gate.userData.nodes.forEach((node, index) => {
+    const nodePulse = lowPower
+      ? 1
+      : 0.86 + Math.sin(elapsedSeconds * 4.2 + index * 0.7) * 0.18;
+    node.material.opacity = isNear ? 0.92 : 0.58;
+    node.scale.setScalar(nodePulse * (isNear ? 1.16 : 1));
+  });
 }
 
 export function applyPlatformVisual(

@@ -94,6 +94,35 @@ body.is-rebound-saved canvas {
   }
 }
 
+body.is-finish-crossed #app::before {
+  border-color: rgba(255, 239, 154, 0.96);
+  box-shadow:
+    0 0 34px rgba(255, 210, 87, 0.58) inset,
+    0 0 64px rgba(145, 247, 255, 0.42);
+  animation: finish-crossed-frame 900ms ease-out both;
+}
+
+body.is-finish-crossed canvas {
+  filter: brightness(1.14) saturate(1.24);
+}
+
+@keyframes finish-crossed-frame {
+  0% {
+    opacity: 0;
+    transform: scale(1.025);
+  }
+
+  24% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0.18;
+    transform: scale(0.997);
+  }
+}
+
 .level-select-screen {
   position: fixed;
   inset: 0;
@@ -601,6 +630,36 @@ body.is-playing .level-select-screen {
 .remaining-board strong {
   color: #eaffff;
   font-size: 22px;
+}
+
+.remaining-board {
+  transition:
+    color 180ms ease,
+    text-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.remaining-board.is-finish-near {
+  color: #ffef9a;
+  text-shadow: 0 0 16px rgba(255, 210, 87, 0.48);
+  animation: finish-near-pulse 760ms ease-in-out infinite alternate;
+}
+
+.remaining-board.is-finish-near strong {
+  color: #ffef9a;
+  text-shadow:
+    0 0 18px rgba(255, 210, 87, 0.72),
+    0 0 30px rgba(145, 247, 255, 0.28);
+}
+
+@keyframes finish-near-pulse {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.08);
+  }
 }
 
 .combo-board strong {
@@ -2150,7 +2209,9 @@ body.is-coach-blocking .pause-button {
   .combo-milestone.is-visible,
   .combo-milestone-flash.is-visible,
   .focus-control.is-ready,
-  body.is-rebound-saved #app::before {
+  body.is-rebound-saved #app::before,
+  body.is-finish-crossed #app::before,
+  .remaining-board.is-finish-near {
     animation: none;
     opacity: 1;
   }
@@ -2773,7 +2834,9 @@ body.is-low-power .shard-value.is-shard-pop,
 body.is-low-power .mission-board.is-mission-complete-pop,
 body.is-low-power .combo-milestone.is-visible,
 body.is-low-power .combo-milestone-flash.is-visible,
-body.is-low-power .run-countdown.is-step-pulse .run-countdown-value {
+body.is-low-power .run-countdown.is-step-pulse .run-countdown-value,
+body.is-low-power.is-finish-crossed #app::before,
+body.is-low-power .remaining-board.is-finish-near {
   animation: none;
 }
 

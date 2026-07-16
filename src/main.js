@@ -81,6 +81,15 @@ import {
   normalizeFocusCharge,
 } from './game/focusAbility.js';
 import {
+  advanceOverload,
+  createOverloadState,
+  isOverloadActive,
+  overloadBonusScore,
+  overloadDurationLandings,
+  overloadFocusBonus,
+  overloadSpeedBonus,
+} from './game/overloadPlatform.js';
+import {
   getCountdownDelay,
   getRunCountdownCopy,
   runCountdownSteps,
@@ -184,6 +193,7 @@ const coachDismissButton = document.querySelector('.coach-dismiss-button');
 const startButton = document.querySelector('.start-button');
 const speedSelect = document.querySelector('.speed-select');
 const speedControl = document.querySelector('.speed-control');
+const overloadStatus = document.querySelector('.overload-status');
 const soundToggle = document.querySelector('.sound-toggle-input');
 const lowPowerToggle = document.querySelector('.power-toggle-input');
 levelSelectScreen.append(speedControl);
@@ -274,6 +284,7 @@ let runCountdownSequenceId = 0;
 let focusCharge = 0;
 let focusRemaining = 0;
 let isFocusActive = false;
+let overloadState = createOverloadState();
 let pointerStartX = null;
 let pointerStartY = null;
 let briefingLevel = 1;
@@ -675,6 +686,25 @@ function updateSpeedDisplay(level) {
   speedValue.textContent = String(level);
 }
 
+function updateOverloadHud() {
+  const active = isOverloadActive(overloadState);
+  overloadStatus.hidden = !active;
+  overloadStatus.textContent = active
+    ? `\u8d85\u8f7d +${overloadSpeedBonus} \u00b7 ${overloadState.remainingLandings} \u8df3`
+    : '';
+  speedControl.classList.toggle('is-overloaded', active);
+}
+
+function resetOverload() {
+  overloadState = createOverloadState();
+  updateOverloadHud();
+}
+
+function updateOverloadAfterLanding(didActivate) {
+  overloadState = advanceOverload(overloadState, didActivate);
+  updateOverloadHud();
+}
+
 function clearSpeedHudPulse() {
   if (speedPulseTimeoutId !== null) {
     window.clearTimeout(speedPulseTimeoutId);
@@ -723,13 +753,27 @@ function setSpeedLevel(level) {
   setCurrentSpeedLevel(isGameRunning ? getLevelBaseSpeed(currentLevel) : selectedSpeedLevel);
 }
 
+function getEndlessRouteDifficulty(value) {
+  const routeStep = Math.floor(Math.max(0, Number(value) || 0) / speedUpScoreInterval);
+  return Math.min(1, 0.35 + routeStep * 0.1);
+}
+
 function setScore(value) {
+  const previousScore = score;
   score = value;
   scoreValue.textContent = String(score);
   updateRunProgress();
   updateRunRecordHud();
 
-  if (currentMode === 'endless' && score === 25) {
+  if (currentMode === 'endless') {
+    const nextDifficulty = getEndlessRouteDifficulty(score);
+
+    if (getRouteCacheStats().difficulty !== nextDifficulty) {
+      setRouteProfile({ difficulty: nextDifficulty }, Math.floor(hopProgress));
+    }
+  }
+
+  if (currentMode === 'endless' && previousScore < 25 && score >= 25) {
     syncAchievements({ announce: true });
   }
 }
@@ -746,7 +790,8 @@ function getLevelBaseSpeed(level) {
 
 function updateSpeedForScore(value) {
   const speedBonus = getScoreSpeedBonus(currentMode, value, speedUpScoreInterval);
-  return setCurrentSpeedLevel(getLevelBaseSpeed(currentLevel) + speedBonus);
+  const overloadBonus = isOverloadActive(overloadState) ? overloadSpeedBonus : 0;
+  return setCurrentSpeedLevel(getLevelBaseSpeed(currentLevel) + speedBonus + overloadBonus);
 }
 
 function getLevelLength(level) {
@@ -1108,6 +1153,7 @@ function startLevel(level, startLandingIndex) {
   levelEndLanding = levelStartLanding + getLevelLength(currentLevel);
   maxCombo = 0;
   resetFocusAbility();
+  resetOverload();
   missionBoard.classList.remove('is-mission-complete-pop');
   setPerfectCount(0);
   setRainbowCount(0);
@@ -1537,6 +1583,7 @@ function completeLevel(landingIndex) {
   isLevelComplete = true;
   clearPauseState();
   resetFocusAbility();
+  resetOverload();
   hideComboMilestone();
   playGameFeedback('complete');
   completedLanding = landingIndex;
@@ -1909,7 +1956,7 @@ function startRun(level = 1, mode = 'level') {
   completedLanding = 0;
   ballX = 0;
   resetRoute(
-    currentMode === 'endless' ? 1 : getLevelRouteDifficulty(level),
+    currentMode === 'endless' ? getEndlessRouteDifficulty(0) : getLevelRouteDifficulty(level),
     currentMode === 'level' ? getLevelRouteSeed(level) : undefined
   );
   collectedShardLandings.clear();
@@ -1944,6 +1991,7 @@ function showLevelSelect() {
   isLevelComplete = false;
   clearPauseState();
   resetFocusAbility();
+  resetOverload();
   document.body.classList.remove('is-playing');
   document.body.classList.remove('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -1962,6 +2010,7 @@ function endGame(reason = '') {
   isLevelComplete = false;
   clearPauseState();
   resetFocusAbility();
+  resetOverload();
   playGameFeedback('death');
   document.body.classList.add('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -2056,6 +2105,7 @@ setBallColor(currentBallColor);
 setSpeedLevel(selectedSpeedLevel);
 setCombo(combo);
 resetFocusAbility();
+resetOverload();
 updateLevelHud(0);
 syncAchievements();
 renderLevelSelect();
@@ -2301,18 +2351,23 @@ function animate() {
       const missionWasComplete = currentMode === 'level' && isMissionComplete();
       const isPerfectLanding =
         Math.abs(ballX - platform.x) < perfectLandingRadius;
+      const didActivateOverload = platform.type === 'overload';
       const previousCombo = combo;
       const previousFocusCharge = focusCharge;
       const comboBreakText = getComboBreakFeedbackText(
         previousCombo,
         isPerfectLanding
       );
-      setScore(score + 1);
+      setScore(score + 1 + (didActivateOverload ? overloadBonusScore : 0));
       setCombo(getNextPrecisionCombo(previousCombo, isPerfectLanding));
       setFocusCharge(getFocusChargeAfterLanding({
         charge: previousFocusCharge,
         isPerfectLanding,
       }));
+      if (didActivateOverload && !isFocusReady(focusCharge)) {
+        setFocusCharge(focusCharge + overloadFocusBonus);
+      }
+      updateOverloadAfterLanding(didActivateOverload);
       const didReadyFocus =
         !isFocusReady(previousFocusCharge) && isFocusReady(focusCharge);
       if (isPerfectLanding) {
@@ -2346,8 +2401,11 @@ function animate() {
       const missionMessage = didCompleteMission
         ? ' · 任务完成'
         : '';
+      const overloadMessage = didActivateOverload
+        ? ` \u00b7 \u8d85\u8f7d +${overloadBonusScore} \u5206 \u00b7 \u4e13\u6ce8 +${overloadFocusBonus} \u00b7 ${overloadDurationLandings} \u8df3\u52a0\u901f`
+        : '';
       const landingBonusMessage =
-        shardMessage + missionMessage + comboBreakMessage + focusMessage;
+        shardMessage + missionMessage + comboBreakMessage + focusMessage + overloadMessage;
       showComboMilestone(combo, { perfect: isPerfectLanding });
       const didSpeedGoUp = updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
@@ -2380,6 +2438,8 @@ function animate() {
           feedbackEvent = 'mission';
         } else if (didCollectShard) {
           feedbackEvent = 'shard';
+        } else if (didActivateOverload) {
+          feedbackEvent = 'overload';
         } else if (didReadyFocus) {
           feedbackEvent = 'focusReady';
         } else if (didSpeedGoUp) {
@@ -2442,6 +2502,8 @@ function animate() {
     focusReady: isFocusReady(focusCharge),
     focusActive: isFocusActive,
     focusRemaining,
+    overloadActive: isOverloadActive(overloadState),
+    overloadRemaining: overloadState.remainingLandings,
     hopTimeScale,
   };
 

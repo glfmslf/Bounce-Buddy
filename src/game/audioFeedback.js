@@ -73,6 +73,12 @@ export function getFeedbackSequence(event, color = 'red') {
         tone(523, { delay: 0.055, duration: 0.16, gain: 0.026, type: 'triangle' }),
         tone(392, { delay: 0.12, duration: 0.24, gain: 0.022 }),
       ];
+    case 'overload':
+      return [
+        tone(330, { duration: 0.08, gain: 0.025, type: 'sawtooth' }),
+        tone(660, { delay: 0.045, duration: 0.12, gain: 0.028, type: 'triangle' }),
+        tone(990, { delay: 0.1, duration: 0.17, gain: 0.026 }),
+      ];
     case 'speedUp':
       return [
         tone(392, { duration: 0.08, gain: 0.024 }),

@@ -74,3 +74,10 @@ export const wildcardPad = {
   emissive: 0xffffff,
   edge: 0xffffff,
 };
+
+export const overloadPad = {
+  label: '\u8d85\u8f7d',
+  pad: 0x4d123f,
+  emissive: 0xff3fc8,
+  edge: 0xffef9a,
+};

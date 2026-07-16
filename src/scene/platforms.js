@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   gameColors,
   lanePositions,
+  overloadPad,
   perfectLandingRadius,
   visibleLandingCount,
   wildcardPad,
@@ -17,6 +18,7 @@ const precisionZoneGeometry = new THREE.RingGeometry(
 );
 const finishRingGeometry = new THREE.RingGeometry(0.48, 0.62, 72);
 const finishLineGeometry = new THREE.BoxGeometry(1.24, 0.026, 0.08);
+const overloadRingGeometry = new THREE.RingGeometry(0.48, 0.66, 48);
 const landingArrowShape = new THREE.Shape()
   .moveTo(0, 0.28)
   .lineTo(0.36, -0.02)
@@ -80,6 +82,14 @@ const finishGoalMaterial = new THREE.MeshBasicMaterial({
   depthWrite: false,
   side: THREE.DoubleSide,
 });
+const overloadRingMaterial = new THREE.MeshBasicMaterial({
+  color: overloadPad.edge,
+  transparent: true,
+  opacity: 0.68,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
 const wildcardStripeMaterials = [
   new THREE.MeshBasicMaterial({
     color: gameColors.red.emissive,
@@ -133,6 +143,7 @@ export function createLandingPads(scene) {
     shard.userData.animationOffset = i * 0.47;
     const finishRing = new THREE.Mesh(finishRingGeometry, finishGoalMaterial.clone());
     const finishLine = new THREE.Mesh(finishLineGeometry, finishGoalMaterial.clone());
+    const overloadRing = new THREE.Mesh(overloadRingGeometry, overloadRingMaterial.clone());
     const stripes = wildcardStripeMaterials.map((material, stripeIndex) => {
       const stripe = new THREE.Mesh(wildcardStripeGeometry, material.clone());
       stripe.position.set((stripeIndex - 1) * 0.48, 0.105, 0);
@@ -152,6 +163,9 @@ export function createLandingPads(scene) {
     finishRing.visible = false;
     finishLine.position.set(0, 0.126, 0.48);
     finishLine.visible = false;
+    overloadRing.rotation.x = -Math.PI / 2;
+    overloadRing.position.set(0, 0.138, 0);
+    overloadRing.visible = false;
     pad.add(body);
     pad.add(edges);
     arrows.forEach((arrow) => pad.add(arrow));
@@ -159,6 +173,7 @@ export function createLandingPads(scene) {
     pad.add(finishRing);
     pad.add(shard);
     pad.add(finishLine);
+    pad.add(overloadRing);
     stripes.forEach((stripe) => pad.add(stripe));
     beacons.forEach((beacon) => pad.add(beacon));
     pad.userData.body = body;
@@ -168,6 +183,7 @@ export function createLandingPads(scene) {
     pad.userData.finishRing = finishRing;
     pad.userData.shard = shard;
     pad.userData.finishLine = finishLine;
+    pad.userData.overloadRing = overloadRing;
     pad.userData.stripes = stripes;
     pad.userData.beacons = beacons;
     scene.add(pad);
@@ -193,10 +209,12 @@ export function applyPlatformVisual(
   const finishLine = pad.userData.finishLine;
   const stripes = pad.userData.stripes;
   const beacons = pad.userData.beacons;
+  const overloadRing = pad.userData.overloadRing;
 
   finishRing.visible = isFinishLanding;
   finishLine.visible = isFinishLanding;
   shard.visible = showShard;
+  overloadRing.visible = platform.type === 'overload';
   if (showShard) {
     const animationTime = performance.now() * 0.004 + shard.userData.animationOffset;
     shard.position.y = 0.72 + Math.sin(animationTime) * 0.08;
@@ -237,6 +255,34 @@ export function applyPlatformVisual(
       beacon.visible = true;
       beacon.material.opacity = isCurrentTarget ? 1 : 0.82;
       beacon.scale.y = 1 + Math.sin(performance.now() * 0.006 + beaconIndex) * 0.16;
+    });
+    return;
+  }
+
+  if (platform.type === 'overload') {
+    const pulse = 1 + Math.sin(performance.now() * 0.008) * 0.08;
+    bodyMaterial.color.setHex(overloadPad.pad);
+    bodyMaterial.emissive.setHex(overloadPad.emissive);
+    bodyMaterial.emissiveIntensity = isCurrentTarget ? 2.45 : 1.7;
+    bodyMaterial.opacity = 0.94;
+    edgeMaterial.color.setHex(overloadPad.edge);
+    edgeMaterial.opacity = isCurrentTarget ? 1 : 0.88;
+    precisionZone.material.color.setHex(overloadPad.emissive);
+    precisionZone.material.opacity = isCurrentTarget ? 0.66 : 0.38;
+    precisionZone.scale.setScalar(isCurrentTarget ? 1.12 : 1.04);
+    overloadRing.material.opacity = isCurrentTarget ? 0.94 : 0.62;
+    overloadRing.material.color.setHex(overloadPad.edge);
+    overloadRing.rotation.z = performance.now() * 0.0018;
+    overloadRing.scale.setScalar(pulse * (isCurrentTarget ? 1.08 : 1));
+    arrows.forEach((arrow, arrowIndex) => {
+      arrow.material.color.setHex(overloadPad.emissive);
+      arrow.material.opacity = isCurrentTarget ? 0.52 - arrowIndex * 0.08 : 0.34 - arrowIndex * 0.06;
+    });
+    stripes.forEach((stripe) => {
+      stripe.visible = false;
+    });
+    beacons.forEach((beacon) => {
+      beacon.visible = false;
     });
     return;
   }

@@ -16,6 +16,9 @@ const platformLayout = new Map([
 ]);
 const routePlans = new Map([[0, startingRoutePlan]]);
 const retainedRouteHistory = maxWildcardGap + 6;
+const overloadDifficultyThreshold = 0.5;
+const minOverloadGap = 3;
+const maxOverloadGap = 7;
 
 
 function normalizeRouteDifficulty(value) {
@@ -127,7 +130,41 @@ function shouldCreateWildcardLanding(index) {
   return seededValue(index, 29) < wildcardChance;
 }
 
-function getPlatformCount(index) {
+function getLastOverloadIndex(beforeIndex) {
+  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+    if (platformLayout.get(index)?.some((platform) => platform.type === 'overload')) {
+      return index;
+    }
+  }
+
+  return -minOverloadGap;
+}
+
+function shouldCreateOverloadLanding(index, routePlan) {
+  if (
+    routeDifficulty < overloadDifficultyThreshold ||
+    index < 4 ||
+    routePlan.shouldCreateWildcard ||
+    isShardLanding(index) ||
+    index - getLastOverloadIndex(index) < minOverloadGap
+  ) {
+    return false;
+  }
+
+  const gap = index - getLastOverloadIndex(index);
+
+  if (gap >= maxOverloadGap) {
+    return true;
+  }
+
+  const overloadChance = 0.2 + (routeDifficulty - overloadDifficultyThreshold) * 0.5;
+  return seededValue(index, 73) < overloadChance;
+}
+
+function getPlatformCount(index, shouldCreateOverload = false) {
+  if (shouldCreateOverload) {
+    return maxPlatformsPerLanding;
+  }
   const distractorChance = 0.34 + routeDifficulty * 0.34;
   let platformCount = 1 + Number(seededValue(index, 3) < distractorChance);
   const previousPlatforms = platformLayout.get(index - 1);
@@ -151,15 +188,25 @@ function createLandingPlatforms(index, routePlan) {
   }
 
   const requiredColor = routePlan.color;
-  const platformCount = getPlatformCount(index);
   const shouldCreateWildcard = routePlan.shouldCreateWildcard;
+  const shouldCreateOverload = shouldCreateOverloadLanding(index, routePlan);
+  const platformCount = getPlatformCount(index, shouldCreateOverload);
   const routeLaneIndex = routePlan.laneIndex;
   const lanes = [routeLaneIndex];
 
   if (platformCount > 1) {
-    const distractorCandidates = lanePositions
+    const previousRouteLaneIndex = routePlans.get(index - 1)?.laneIndex ?? routeLaneIndex;
+    const reachableDistractorCandidates = lanePositions
       .map((_, laneIndex) => laneIndex)
-      .filter((laneIndex) => laneIndex !== routeLaneIndex);
+      .filter((laneIndex) => (
+        laneIndex !== routeLaneIndex &&
+        Math.abs(laneIndex - previousRouteLaneIndex) <= 1
+      ));
+    const distractorCandidates = reachableDistractorCandidates.length > 0
+      ? reachableDistractorCandidates
+      : lanePositions
+        .map((_, laneIndex) => laneIndex)
+        .filter((laneIndex) => laneIndex !== routeLaneIndex);
     const distractorLane = pickSeeded(
       distractorCandidates,
       index,
@@ -184,14 +231,15 @@ function createLandingPlatforms(index, routePlan) {
       };
     }
 
-    const color = laneIndex === routeLaneIndex
+    const isOverloadPlatform = shouldCreateOverload && platformIndex === 1;
+    const color = laneIndex === routeLaneIndex || isOverloadPlatform
       ? requiredColor
       : getNextColor(requiredColor, index + laneIndex);
 
     return {
       x,
       hasShard: platformIndex === 0 && isShardLanding(index),
-      type: 'normal',
+      type: isOverloadPlatform ? 'overload' : 'normal',
       color,
       nextColor: null,
     };
@@ -333,6 +381,10 @@ export function pruneRouteBefore(currentLandingIndex) {
 export function getRouteCacheStats() {
   return {
     difficulty: routeDifficulty,
+    overloadPlatforms: Array.from(platformLayout.values()).reduce(
+      (count, platforms) => count + platforms.filter((platform) => platform.type === 'overload').length,
+      0
+    ),
     platformLayouts: platformLayout.size,
     routePlans: routePlans.size,
   };
@@ -413,6 +465,7 @@ export function getRouteSample(stepCount = 16) {
       color: reachablePlatform.color,
       type: reachablePlatform.type,
       nextColor: reachablePlatform.nextColor,
+      overloadAvailable: platforms.some((platform) => platform.type === 'overload'),
       platformCount: platforms.length,
     });
 

@@ -133,6 +133,7 @@ import {
 import { getPauseCopy, shouldAutoPause } from './game/pauseFeedback.js';
 import { getRenderQualitySettings } from './game/renderQuality.js';
 import { getRunRecordProgress } from './game/runRecordProgress.js';
+import { getSceneTheme } from './game/sceneTheme.js';
 import { getDeathProgressSummary } from './game/runSummary.js';
 import {
   getRouteDifficulty,
@@ -295,9 +296,10 @@ let pointerStartY = null;
 let briefingLevel = 1;
 let briefingReturnFocus = null;
 
+const initialSceneTheme = getSceneTheme();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x07111f);
-scene.fog = new THREE.Fog(0x07111f, 18, 58);
+scene.background = new THREE.Color(initialSceneTheme.background);
+scene.fog = new THREE.Fog(initialSceneTheme.background, 18, 58);
 
 const starPalette = starPaletteHex.map((hex) => new THREE.Color(hex));
 
@@ -321,10 +323,14 @@ renderer.shadowMap.enabled = initialRenderQuality.shadows;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 app.appendChild(renderer.domElement);
 
-const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x86a9c9, 2.3);
+const hemisphereLight = new THREE.HemisphereLight(
+  initialSceneTheme.hemisphereSky,
+  initialSceneTheme.hemisphereGround,
+  2.3
+);
 scene.add(hemisphereLight);
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 3.4);
+const keyLight = new THREE.DirectionalLight(initialSceneTheme.keyLight, 3.4);
 keyLight.position.set(4, 8, 5);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
@@ -339,7 +345,7 @@ scene.add(keyLight.target);
 
 const floorGeometry = new THREE.PlaneGeometry(28, 90);
 const floorMaterial = new THREE.MeshStandardMaterial({
-  color: 0x89d8ff,
+  color: initialSceneTheme.floor,
   roughness: 0.7,
   metalness: 0.02,
   transparent: true,
@@ -417,7 +423,12 @@ shadowBlob.rotation.x = -Math.PI / 2;
 shadowBlob.position.y = 0.012;
 scene.add(shadowBlob);
 
-const grid = new THREE.GridHelper(28, 28, 0x5bd7ff, 0x244567);
+const grid = new THREE.GridHelper(
+  28,
+  28,
+  initialSceneTheme.gridCenter,
+  initialSceneTheme.gridLine
+);
 grid.position.y = 0.015;
 grid.material.transparent = true;
 grid.material.opacity = 0.22;
@@ -449,6 +460,7 @@ starGeometry.setAttribute(
 const starGround = new THREE.Points(
   starGeometry,
   new THREE.PointsMaterial({
+    color: initialSceneTheme.starTint,
     size: 0.07,
     transparent: true,
     opacity: 0.85,
@@ -458,6 +470,109 @@ const starGround = new THREE.Points(
   })
 );
 scene.add(starGround);
+
+const sceneThemeCurrent = {
+  background: new THREE.Color(initialSceneTheme.background),
+  floor: new THREE.Color(initialSceneTheme.floor),
+  gridCenter: new THREE.Color(initialSceneTheme.gridCenter),
+  gridLine: new THREE.Color(initialSceneTheme.gridLine),
+  hemisphereGround: new THREE.Color(initialSceneTheme.hemisphereGround),
+  hemisphereSky: new THREE.Color(initialSceneTheme.hemisphereSky),
+  keyLight: new THREE.Color(initialSceneTheme.keyLight),
+  starTint: new THREE.Color(initialSceneTheme.starTint),
+};
+const sceneThemeTarget = Object.fromEntries(
+  Object.entries(sceneThemeCurrent).map(([key, color]) => [key, color.clone()])
+);
+const sceneThemeColorKeys = Object.keys(sceneThemeCurrent);
+const initialGridCenterColor = new THREE.Color(initialSceneTheme.gridCenter);
+const gridColorAttribute = grid.geometry.getAttribute('color');
+const gridCenterVertices = Array.from(
+  { length: gridColorAttribute.count },
+  (_, index) => {
+    const color = new THREE.Color().fromBufferAttribute(gridColorAttribute, index);
+    return (
+      Math.abs(color.r - initialGridCenterColor.r) +
+      Math.abs(color.g - initialGridCenterColor.g) +
+      Math.abs(color.b - initialGridCenterColor.b)
+    ) < 0.001;
+  }
+);
+let activeSceneThemeId = initialSceneTheme.id;
+let isSceneThemeTransitioning = false;
+
+function setSceneTheme(theme, { immediate = false } = {}) {
+  if (theme.id === activeSceneThemeId && !immediate) {
+    return;
+  }
+
+  activeSceneThemeId = theme.id;
+
+  sceneThemeColorKeys.forEach((key) => {
+    sceneThemeTarget[key].setHex(theme[key]);
+    if (immediate) {
+      sceneThemeCurrent[key].copy(sceneThemeTarget[key]);
+    }
+  });
+  isSceneThemeTransitioning = !immediate;
+
+  if (immediate) {
+    applySceneThemeColors();
+  }
+}
+
+function applySceneThemeColors() {
+  scene.background.copy(sceneThemeCurrent.background);
+  scene.fog.color.copy(sceneThemeCurrent.background);
+  floorMaterial.color.copy(sceneThemeCurrent.floor);
+  hemisphereLight.color.copy(sceneThemeCurrent.hemisphereSky);
+  hemisphereLight.groundColor.copy(sceneThemeCurrent.hemisphereGround);
+  keyLight.color.copy(sceneThemeCurrent.keyLight);
+  starGround.material.color.copy(sceneThemeCurrent.starTint);
+
+  for (let index = 0; index < gridColorAttribute.count; index += 1) {
+    const color = gridCenterVertices[index]
+      ? sceneThemeCurrent.gridCenter
+      : sceneThemeCurrent.gridLine;
+    gridColorAttribute.setXYZ(index, color.r, color.g, color.b);
+  }
+  gridColorAttribute.needsUpdate = true;
+}
+
+function updateSceneTheme(delta) {
+  if (!isSceneThemeTransitioning) {
+    return;
+  }
+
+  const blend = 1 - Math.exp(-Math.max(0, delta) * 2.4);
+  let remainingDifference = 0;
+
+  sceneThemeColorKeys.forEach((key) => {
+    sceneThemeCurrent[key].lerp(sceneThemeTarget[key], blend);
+    remainingDifference +=
+      Math.abs(sceneThemeCurrent[key].r - sceneThemeTarget[key].r) +
+      Math.abs(sceneThemeCurrent[key].g - sceneThemeTarget[key].g) +
+      Math.abs(sceneThemeCurrent[key].b - sceneThemeTarget[key].b);
+  });
+
+  if (remainingDifference < 0.002) {
+    sceneThemeColorKeys.forEach((key) => {
+      sceneThemeCurrent[key].copy(sceneThemeTarget[key]);
+    });
+    isSceneThemeTransitioning = false;
+  }
+
+  applySceneThemeColors();
+}
+
+function syncSceneTheme({ immediate = false, value = score } = {}) {
+  setSceneTheme(getSceneTheme({
+    intensity: getLevelRouteIntensity(currentLevel),
+    mode: currentMode,
+    score: value,
+    scoreInterval: speedUpScoreInterval,
+  }), { immediate });
+}
 
 const impactLight = new THREE.PointLight(0x75d7ff, 0, 6);
 impactLight.position.set(0, 0.2, 0);
@@ -776,6 +891,8 @@ function setScore(value) {
     if (getRouteCacheStats().difficulty !== nextDifficulty) {
       setRouteProfile({ difficulty: nextDifficulty }, Math.floor(hopProgress));
     }
+
+    syncSceneTheme({ value: score });
   }
 
   if (currentMode === 'endless' && previousScore < 25 && score >= 25) {
@@ -1154,6 +1271,7 @@ function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
 
 function startLevel(level, startLandingIndex) {
   currentLevel = level;
+  syncSceneTheme();
   levelStartLanding = startLandingIndex;
   levelEndLanding = levelStartLanding + getLevelLength(currentLevel);
   maxCombo = 0;
@@ -2299,6 +2417,7 @@ renderer.domElement.addEventListener('pointerup', (event) => {
 function animate() {
   timer.update();
   const delta = timer.getDelta();
+  updateSceneTheme(delta);
   const phaseElapsedSeconds = Date.now() / 1000;
   updateFocusAbility(delta);
   const hopTimeScale = isFocusActive ? focusTimeScale : 1;
@@ -2525,6 +2644,7 @@ function animate() {
     missionComplete: currentMode !== 'endless' && isMissionComplete(),
     routeSeed: getRouteSeed(),
     routeCache: getRouteCacheStats(),
+    sceneTheme: activeSceneThemeId,
     perfectLandingRadius,
     landingPadPoolSize: landingPads.length,
     precisionZonePoolSize: landingPads.length,

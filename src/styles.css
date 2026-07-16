@@ -77,6 +77,18 @@ body.is-rebound-saved canvas {
   filter: brightness(1.12) saturate(1.28);
 }
 
+body.is-retry-recovered #app::before {
+  border-color: rgba(77, 255, 184, 0.94);
+  box-shadow:
+    0 0 30px rgba(77, 255, 184, 0.54) inset,
+    0 0 28px rgba(103, 232, 255, 0.32);
+  animation: rebound-save-frame 820ms ease-out both;
+}
+
+body.is-retry-recovered canvas {
+  filter: brightness(1.12) saturate(1.28);
+}
+
 @keyframes rebound-save-frame {
   0% {
     opacity: 0;
@@ -905,6 +917,23 @@ body.is-playing .level-select-screen {
   color: #ffdee9;
   font-size: 15px;
   text-align: center;
+}
+
+.death-retry-marker {
+  max-width: 100%;
+  padding: 6px 9px;
+  color: #ffef9a;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+  border: 1px solid rgba(255, 210, 87, 0.28);
+  border-radius: 6px;
+  background: rgba(255, 210, 87, 0.08);
+}
+
+.death-retry-marker[hidden] {
+  display: none;
 }
 
 .death-best {
@@ -2210,6 +2239,7 @@ body.is-coach-blocking .pause-button {
   .combo-milestone-flash.is-visible,
   .focus-control.is-ready,
   body.is-rebound-saved #app::before,
+  body.is-retry-recovered #app::before,
   body.is-finish-crossed #app::before,
   .remaining-board.is-finish-near {
     animation: none;
@@ -2835,6 +2865,7 @@ body.is-low-power .mission-board.is-mission-complete-pop,
 body.is-low-power .combo-milestone.is-visible,
 body.is-low-power .combo-milestone-flash.is-visible,
 body.is-low-power .run-countdown.is-step-pulse .run-countdown-value,
+body.is-low-power.is-retry-recovered #app::before,
 body.is-low-power.is-finish-crossed #app::before,
 body.is-low-power .remaining-board.is-finish-near {
   animation: none;

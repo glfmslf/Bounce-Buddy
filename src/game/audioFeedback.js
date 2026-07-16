@@ -49,6 +49,12 @@ export function getFeedbackSequence(event, color = 'red') {
         tone(784, { delay: 0.07, duration: 0.14, gain: 0.028, type: 'sine' }),
         tone(1175, { delay: 0.15, duration: 0.2, gain: 0.026, type: 'triangle' }),
       ];
+    case 'retryRecovered':
+      return [
+        tone(330, { duration: 0.07, gain: 0.02, type: 'sine' }),
+        tone(659, { delay: 0.05, duration: 0.09, gain: 0.025, type: 'triangle' }),
+        tone(988, { delay: 0.11, duration: 0.14, gain: 0.026, type: 'sine' }),
+      ];
     case 'mission':
       return [
         tone(523, { duration: 0.08, gain: 0.026, type: 'triangle' }),

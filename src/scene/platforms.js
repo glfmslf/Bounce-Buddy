@@ -24,6 +24,9 @@ const finishGatePostGeometry = new THREE.BoxGeometry(0.18, 3.2, 0.18);
 const finishGateBeamGeometry = new THREE.BoxGeometry(7.6, 0.18, 0.18);
 const finishGateHaloGeometry = new THREE.TorusGeometry(2.72, 0.045, 8, 96);
 const finishGateNodeGeometry = new THREE.OctahedronGeometry(0.11, 0);
+const retryMarkerRingGeometry = new THREE.RingGeometry(0.54, 0.72, 48);
+const retryMarkerBarGeometry = new THREE.BoxGeometry(0.82, 0.085, 0.065);
+const retryMarkerBeamGeometry = new THREE.CylinderGeometry(0.025, 0.025, 1.15, 12);
 const overloadRingGeometry = new THREE.RingGeometry(0.48, 0.66, 48);
 const phaseRingGeometry = new THREE.RingGeometry(0.48, 0.67, 6);
 const driftRailGeometry = new THREE.BoxGeometry(2.4, 0.022, 0.07);
@@ -113,6 +116,14 @@ const finishGateCyanMaterial = new THREE.MeshBasicMaterial({
   opacity: 0.64,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
+});
+const retryMarkerMaterial = new THREE.MeshBasicMaterial({
+  color: 0xff6f91,
+  transparent: true,
+  opacity: 0.68,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.DoubleSide,
 });
 const overloadRingMaterial = new THREE.MeshBasicMaterial({
   color: overloadPad.edge,
@@ -346,6 +357,60 @@ export function applyFinishGateVisual(
   });
 }
 
+export function createRetryMarker(scene) {
+  const marker = new THREE.Group();
+  const ring = new THREE.Mesh(retryMarkerRingGeometry, retryMarkerMaterial.clone());
+  const bars = [-1, 1].map((direction) => {
+    const bar = new THREE.Mesh(retryMarkerBarGeometry, retryMarkerMaterial.clone());
+    bar.position.set(0, 0.76, 0.02);
+    bar.rotation.z = direction * Math.PI / 4;
+    return bar;
+  });
+  const beam = new THREE.Mesh(retryMarkerBeamGeometry, retryMarkerMaterial.clone());
+
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.14;
+  beam.position.y = 0.58;
+  marker.add(ring, ...bars, beam);
+  marker.visible = false;
+  marker.userData.ring = ring;
+  marker.userData.bars = bars;
+  marker.userData.beam = beam;
+  marker.userData.materials = [ring, ...bars, beam].map((mesh) => mesh.material);
+  scene.add(marker);
+  return marker;
+}
+
+export function applyRetryMarkerVisual(
+  marker,
+  {
+    elapsedSeconds = 0,
+    isNext = false,
+    lowPower = false,
+    reason = 'miss',
+    visible = false,
+    x = 0,
+    z = 0,
+  } = {}
+) {
+  marker.visible = visible;
+
+  if (!visible) {
+    return;
+  }
+
+  const color = reason === 'color' ? 0xff557d : 0xffd257;
+  const pulse = lowPower ? 0 : (Math.sin(elapsedSeconds * 5.4) + 1) / 2;
+  const scale = (isNext ? 1.14 : 1) + pulse * (isNext ? 0.08 : 0.04);
+  marker.position.set(x, 0, z);
+  marker.scale.setScalar(scale);
+  marker.userData.materials.forEach((material, index) => {
+    material.color.setHex(color);
+    material.opacity = (isNext ? 0.78 : 0.48) + pulse * (0.16 - index * 0.02);
+  });
+  marker.userData.ring.rotation.z = lowPower ? 0 : elapsedSeconds * 0.42;
+  marker.userData.beam.scale.y = lowPower ? 1 : 0.92 + pulse * 0.22;
+}
 export function applyPlatformVisual(
   pad,
   platform,

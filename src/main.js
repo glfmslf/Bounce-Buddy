@@ -52,8 +52,10 @@ import {
 import {
   applyFinishGateVisual,
   applyPlatformVisual,
+  applyRetryMarkerVisual,
   createFinishGate,
   createLandingPads,
+  createRetryMarker as createRetryMarkerObject,
 } from './scene/platforms.js';
 import { createAudioFeedback } from './game/audioFeedback.js';
 import {
@@ -77,6 +79,12 @@ import {
   getFinishGateState,
   isEnteringFinishApproach,
 } from './game/finishGate.js';
+import {
+  createRetryMarker,
+  getRetryMarkerState,
+  getRetryMarkerText,
+  isRetryMarkerRecovered,
+} from './game/retryMarker.js';
 import {
   canUseReboundShield,
   getReboundShieldProgress,
@@ -277,6 +285,7 @@ const deathLevelsButton = document.querySelector('.death-levels-button');
 const deathRetryButton = document.querySelector('.death-retry-button');
 const deathScore = document.querySelector('.death-score');
 const deathReason = document.querySelector('.death-reason');
+const deathRetryMarker = document.querySelector('.death-retry-marker');
 const deathPanel = document.querySelector('.death-panel');
 const deathBest = document.querySelector('.death-best');
 const deathRecordDetail = document.querySelector('.death-record-detail');
@@ -312,6 +321,8 @@ let focusRemaining = 0;
 let isFocusActive = false;
 let overloadState = createOverloadState();
 let reboundShieldReady = false;
+let retryMarkerData = null;
+let retryRecoveredTimeoutId = null;
 let pointerStartX = null;
 let pointerStartY = null;
 let briefingLevel = 1;
@@ -626,6 +637,7 @@ const impactMaterial = new THREE.MeshBasicMaterial({
 
 const landingPads = createLandingPads(scene);
 const finishGate = createFinishGate(scene);
+const retryMarkerObject = createRetryMarkerObject(scene);
 
 function clearImpactEffects() {
   impactEffects.splice(0).forEach((effect) => {
@@ -1346,6 +1358,77 @@ function clearFinishPresentation() {
   document.body.classList.remove('is-finish-near', 'is-finish-crossed');
 }
 
+function clearRetryRecoveredFeedback() {
+  window.clearTimeout(retryRecoveredTimeoutId);
+  retryRecoveredTimeoutId = null;
+  document.body.classList.remove('is-retry-recovered');
+}
+
+function updateDeathRetryMarker() {
+  const markerText = getRetryMarkerText(retryMarkerData);
+  deathRetryMarker.hidden = markerText === '';
+  deathRetryMarker.textContent = markerText
+    ? markerText + ' · 重试时会在路线中标记'
+    : '';
+  deathRetryButton.textContent = markerText ? '带标记重试' : '重试本局';
+}
+
+function clearRetryMarker({ keepRecoveryFeedback = false } = {}) {
+  retryMarkerData = null;
+  retryMarkerObject.visible = false;
+  updateDeathRetryMarker();
+
+  if (!keepRecoveryFeedback) {
+    clearRetryRecoveredFeedback();
+  }
+}
+
+function rememberRetryMarker(details) {
+  retryMarkerData = createRetryMarker(details);
+  retryMarkerObject.visible = false;
+  updateDeathRetryMarker();
+  return retryMarkerData;
+}
+
+function flashRetryRecovered() {
+  window.clearTimeout(retryRecoveredTimeoutId);
+  document.body.classList.remove('is-retry-recovered');
+  void document.body.offsetWidth;
+  document.body.classList.add('is-retry-recovered');
+  retryRecoveredTimeoutId = window.setTimeout(() => {
+    document.body.classList.remove('is-retry-recovered');
+    retryRecoveredTimeoutId = null;
+  }, 820);
+}
+
+function getCurrentRetryMarkerState(
+  currentLandingIndex = Math.floor(hopProgress)
+) {
+  return getRetryMarkerState(retryMarkerData, {
+    currentJump: Math.max(0, currentLandingIndex - levelStartLanding),
+    level: currentLevel,
+    mode: currentMode,
+    visibleLandingCount,
+  });
+}
+
+function recoverRetryMarker(landingIndex) {
+  const didRecover = isRetryMarkerRecovered(retryMarkerData, {
+    jump: landingIndex - levelStartLanding,
+    level: currentLevel,
+    mode: currentMode,
+  });
+
+  if (!didRecover) {
+    return false;
+  }
+
+  retryMarkerData = null;
+  retryMarkerObject.visible = false;
+  updateDeathRetryMarker();
+  flashRetryRecovered();
+  return true;
+}
 function updateLevelHud(currentLandingIndex = Math.floor(hopProgress)) {
   if (currentMode === 'endless') {
     remainingBoard.classList.remove('is-finish-near');
@@ -1813,6 +1896,7 @@ function completeLevel(landingIndex) {
   resetFocusAbility();
   resetOverload();
   hideComboMilestone();
+  clearRetryMarker();
   document.body.classList.add('is-finish-crossed');
   playGameFeedback('complete');
   completedLanding = landingIndex;
@@ -2226,7 +2310,11 @@ function triggerReboundShieldRescue(landingIndex) {
 window.__bounceBuddySimulateRoute = simulateReachableRoute;
 window.__bounceBuddyGetRouteSample = getRouteSample;
 
-function startRun(level = 1, mode = 'level') {
+function startRun(
+  level = 1,
+  mode = 'level',
+  { preserveRetryMarker = false } = {}
+) {
   clearRunCountdown();
   gameHud.append(speedControl);
   if (soundEnabled) {
@@ -2236,6 +2324,16 @@ function startRun(level = 1, mode = 'level') {
   isGameOver = false;
   isLevelComplete = false;
   currentMode = mode;
+  const shouldKeepRetryMarker = preserveRetryMarker && getRetryMarkerState(
+    retryMarkerData,
+    { currentJump: 0, level, mode, visibleLandingCount }
+  ).isActive;
+  if (shouldKeepRetryMarker) {
+    clearRetryRecoveredFeedback();
+    retryMarkerObject.visible = false;
+  } else {
+    clearRetryMarker();
+  }
   updateBestScoreDisplay();
   clearPauseState();
   hopProgress = 0;
@@ -2255,9 +2353,12 @@ function startRun(level = 1, mode = 'level') {
   setCurrentSpeedLevel(getLevelBaseSpeed(currentLevel));
   setBallColor('red');
   targetBallX = findValidPlatformForColor(1, currentBallColor)?.x ?? 0;
+  const retryMarkerMessage = shouldKeepRetryMarker
+    ? ' \u00b7 \u590d\u76d8\u7b2c ' + retryMarkerData.jump + ' \u8df3'
+    : '';
   gameMessage.textContent = currentMode === 'endless'
     ? '星河没完没了：没有终点，每 10 分升 1 档'
-    : `${getLevelName(currentLevel)}：还剩 ${getLevelLength(currentLevel)} 跳`;
+    : `${getLevelName(currentLevel)}：还剩 ${getLevelLength(currentLevel)} 跳${retryMarkerMessage}`;
   showCoachTipIfNeeded();
   document.body.classList.add('is-playing');
   document.body.classList.remove('is-game-over');
@@ -2282,6 +2383,7 @@ function showLevelSelect() {
   resetFocusAbility();
   resetOverload();
   resetReboundShield();
+  clearRetryMarker();
   clearFinishPresentation();
   document.body.classList.remove('is-playing');
   document.body.classList.remove('is-game-over');
@@ -2294,11 +2396,21 @@ function showLevelSelect() {
   renderLevelSelect();
 }
 
-function endGame(reason = '') {
+function endGame(reason = '', failure = null) {
   clearRunCountdown();
   isGameRunning = false;
   isGameOver = true;
   isLevelComplete = false;
+  if (currentMode === 'level' && failure) {
+    rememberRetryMarker({
+      jump: failure.landingIndex - levelStartLanding,
+      level: currentLevel,
+      reason: failure.reason,
+      x: failure.x,
+    });
+  } else {
+    clearRetryMarker();
+  }
   clearPauseState();
   resetFocusAbility();
   resetOverload();
@@ -2400,6 +2512,7 @@ setCombo(combo);
 resetFocusAbility();
 resetOverload();
 resetReboundShield();
+clearRetryMarker();
 updateLevelHud(0);
 syncAchievements();
 renderLevelSelect();
@@ -2459,7 +2572,7 @@ backToLevelsButton.addEventListener('click', () => {
 });
 
 deathRetryButton.addEventListener('click', () => {
-  startRun(currentLevel, currentMode);
+  startRun(currentLevel, currentMode, { preserveRetryMarker: true });
 });
 
 deathLevelsButton.addEventListener('click', () => {
@@ -2484,7 +2597,9 @@ resumeButton.addEventListener('click', () => {
 });
 
 pauseRetryButton.addEventListener('click', () => {
-  startRun(currentLevel, currentMode);
+  startRun(currentLevel, currentMode, {
+    preserveRetryMarker: Boolean(retryMarkerData),
+  });
 });
 
 pauseLevelsButton.addEventListener('click', () => {
@@ -2650,6 +2765,7 @@ function animate() {
         Math.abs(ballX - platformX) < perfectLandingRadius;
       const didActivateOverload = platform.type === 'overload';
       const didCatchDrift = platform.type === 'drift';
+      const didRecoverRetryMarker = recoverRetryMarker(landingIndex);
       const phaseState = platform.type === 'phase'
         ? getPhasePlatformState(platform, phaseElapsedSeconds)
         : null;
@@ -2736,6 +2852,9 @@ function animate() {
       const finishApproachMessage = didEnterFinishApproach
         ? ' \u00b7 \u7ec8\u70b9\u8fdb\u5165\u89c6\u91ce'
         : '';
+      const retryRecoveryMessage = didRecoverRetryMarker
+        ? ' \u00b7 \u8d8a\u8fc7\u4e0a\u6b21\u5931\u8bef\u70b9'
+        : '';
       const landingBonusMessage =
         shardMessage +
         missionMessage +
@@ -2744,7 +2863,8 @@ function animate() {
         phaseMessage +
         driftMessage +
         reboundShieldMessage +
-        finishApproachMessage;
+        finishApproachMessage +
+        retryRecoveryMessage;
       showComboMilestone(combo, {
         perfect: isPerfectLanding,
         shieldCharged: didChargeReboundShield,
@@ -2778,6 +2898,8 @@ function animate() {
 
         if (didCompleteMission) {
           feedbackEvent = 'mission';
+        } else if (didRecoverRetryMarker) {
+          feedbackEvent = 'retryRecovered';
         } else if (didEnterFinishApproach) {
           feedbackEvent = 'finishNear';
         } else if (didChargeReboundShield) {
@@ -2812,7 +2934,11 @@ function animate() {
         : '\u6ca1\u6709\u843d\u5230\u5e73\u53f0';
 
       if (!triggerReboundShieldRescue(landingIndex)) {
-        endGame(failureReason);
+        endGame(failureReason, {
+          landingIndex,
+          reason: onPlatform ? 'color' : 'miss',
+          x: ballX,
+        });
       }
     }
   }
@@ -2842,6 +2968,7 @@ function animate() {
     mode: currentMode,
     visibleLandingCount,
   });
+  const retryMarkerState = getCurrentRetryMarkerState(currentLanding);
   window.__bounceBuddyDebug = {
     ballY: ball.position.y,
     ballZ: ball.position.z,
@@ -2881,6 +3008,10 @@ function animate() {
     reboundShieldProgress: getReboundShieldProgress(combo, reboundShieldReady),
     finishGate: finishGateState,
     finishGateObjectCount: 1 + finishGate.children.length,
+    retryMarker: retryMarkerData
+      ? { ...retryMarkerData, ...retryMarkerState }
+      : null,
+    retryMarkerObjectCount: 1 + retryMarkerObject.children.length,
     overloadActive: isOverloadActive(overloadState),
     overloadRemaining: overloadState.remainingLandings,
     nextPhaseState,
@@ -2896,6 +3027,17 @@ function animate() {
       finishGateState.visible || (isLevelComplete && currentMode === 'level')
     ),
     z: nearZ - levelEndLanding * landingGap,
+  });
+  applyRetryMarkerVisual(retryMarkerObject, {
+    elapsedSeconds: phaseElapsedSeconds,
+    isNext: retryMarkerState.isNext,
+    lowPower: lowPowerEnabled,
+    reason: retryMarkerData?.reason,
+    visible: isGameRunning && !isLevelComplete && retryMarkerState.visible,
+    x: retryMarkerData?.x ?? 0,
+    z: nearZ - (
+      levelStartLanding + (retryMarkerData?.jump ?? 0)
+    ) * landingGap,
   });
 
   targetMarker.visible = isGameRunning && !isPaused && !isLevelComplete;

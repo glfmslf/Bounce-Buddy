@@ -16,6 +16,7 @@ import {
   levelStarsStorageKey,
   nearZ,
   platformHalfWidth,
+  perfectLandingRadius,
   speedUpScoreInterval,
   soundEnabledStorageKey,
   lowPowerStorageKey,
@@ -2163,7 +2164,8 @@ function animate() {
 
     if (landed) {
       const missionWasComplete = currentMode === 'level' && isMissionComplete();
-      const isPerfectLanding = Math.abs(ballX - platform.x) < 0.36;
+      const isPerfectLanding =
+        Math.abs(ballX - platform.x) < perfectLandingRadius;
       const previousCombo = combo;
       const comboBreakText = getComboBreakFeedbackText(
         previousCombo,
@@ -2288,7 +2290,9 @@ function animate() {
     missionComplete: currentMode !== 'endless' && isMissionComplete(),
     routeSeed: getRouteSeed(),
     routeCache: getRouteCacheStats(),
+    perfectLandingRadius,
     landingPadPoolSize: landingPads.length,
+    precisionZonePoolSize: landingPads.length,
   };
 
   targetMarker.visible = isGameRunning && !isPaused && !isLevelComplete;

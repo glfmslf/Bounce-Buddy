@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   gameColors,
   lanePositions,
+  perfectLandingRadius,
   visibleLandingCount,
   wildcardPad,
 } from '../game/config.js';
@@ -9,6 +10,11 @@ import {
 const landingPadGeometry = new THREE.BoxGeometry(1.72, 0.16, 1.45);
 const wildcardStripeGeometry = new THREE.BoxGeometry(0.42, 0.035, 1.55);
 const wildcardBeaconGeometry = new THREE.BoxGeometry(0.2, 0.34, 0.22);
+const precisionZoneGeometry = new THREE.RingGeometry(
+  perfectLandingRadius * 0.68,
+  perfectLandingRadius,
+  48
+);
 const finishRingGeometry = new THREE.RingGeometry(0.48, 0.62, 72);
 const finishLineGeometry = new THREE.BoxGeometry(1.24, 0.026, 0.08);
 const landingArrowShape = new THREE.Shape()
@@ -40,6 +46,14 @@ const landingArrowMaterial = new THREE.MeshBasicMaterial({
   color: 0xa6f6ff,
   transparent: true,
   opacity: 0.24,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const precisionZoneMaterial = new THREE.MeshBasicMaterial({
+  color: 0xa6f6ff,
+  transparent: true,
+  opacity: 0.2,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
   side: THREE.DoubleSide,
@@ -103,6 +117,13 @@ export function createLandingPads(scene) {
       arrow.position.set(0, 0.116, zOffset);
       return arrow;
     });
+    const precisionZone = new THREE.Mesh(
+      precisionZoneGeometry,
+      precisionZoneMaterial.clone()
+    );
+    precisionZone.rotation.x = -Math.PI / 2;
+    precisionZone.position.set(0, 0.132, 0);
+    precisionZone.renderOrder = 2;
     const shard = new THREE.Group();
     const shardCore = new THREE.Mesh(shardCoreGeometry, shardCoreMaterial.clone());
     const shardHalo = new THREE.Mesh(shardHaloGeometry, shardHaloMaterial.clone());
@@ -134,6 +155,7 @@ export function createLandingPads(scene) {
     pad.add(body);
     pad.add(edges);
     arrows.forEach((arrow) => pad.add(arrow));
+    pad.add(precisionZone);
     pad.add(finishRing);
     pad.add(shard);
     pad.add(finishLine);
@@ -142,6 +164,7 @@ export function createLandingPads(scene) {
     pad.userData.body = body;
     pad.userData.edges = edges;
     pad.userData.arrows = arrows;
+    pad.userData.precisionZone = precisionZone;
     pad.userData.finishRing = finishRing;
     pad.userData.shard = shard;
     pad.userData.finishLine = finishLine;
@@ -164,6 +187,7 @@ export function applyPlatformVisual(
   const bodyMaterial = pad.userData.body.material;
   const edgeMaterial = pad.userData.edges.material;
   const arrows = pad.userData.arrows;
+  const precisionZone = pad.userData.precisionZone;
   const finishRing = pad.userData.finishRing;
   const shard = pad.userData.shard;
   const finishLine = pad.userData.finishLine;
@@ -196,6 +220,10 @@ export function applyPlatformVisual(
     bodyMaterial.opacity = 0.96;
     edgeMaterial.color.setHex(0xffffff);
     edgeMaterial.opacity = isCurrentTarget ? 1 : 0.95;
+    const nextColor = gameColors[platform.nextColor] ?? gameColors.blue;
+    precisionZone.material.color.setHex(nextColor.edge);
+    precisionZone.material.opacity = isCurrentTarget ? 0.58 : 0.28;
+    precisionZone.scale.setScalar(isCurrentTarget ? 1.08 : 1);
     arrows.forEach((arrow, arrowIndex) => {
       arrow.material.color.setHex(0xffffff);
       arrow.material.opacity = isCurrentTarget ? 0.38 - arrowIndex * 0.08 : 0.22 - arrowIndex * 0.05;
@@ -226,6 +254,9 @@ export function applyPlatformVisual(
   bodyMaterial.opacity = 0.82;
   edgeMaterial.color.setHex(color.edge);
   edgeMaterial.opacity = isCurrentTarget ? 0.92 : 0.72;
+  precisionZone.material.color.setHex(color.edge);
+  precisionZone.material.opacity = isCurrentTarget ? 0.48 : 0.2;
+  precisionZone.scale.setScalar(isCurrentTarget ? 1.08 : 1);
   arrows.forEach((arrow, arrowIndex) => {
     arrow.material.color.setHex(color.edge);
     arrow.material.opacity = isCurrentTarget ? 0.34 - arrowIndex * 0.07 : 0.2 - arrowIndex * 0.05;

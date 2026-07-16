@@ -25,6 +25,7 @@ export const levelCatalog = [
 
 export const lanePositions = [-2.4, 0, 2.4];
 export const platformHalfWidth = 0.86;
+export const perfectLandingRadius = 0.36;
 export const visibleLandingCount = 12;
 export const maxPlatformsPerLanding = 2;
 export const minWildcardGap = 3;

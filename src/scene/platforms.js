@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  driftPad,
   gameColors,
   lanePositions,
   overloadPad,
@@ -21,6 +22,8 @@ const finishRingGeometry = new THREE.RingGeometry(0.48, 0.62, 72);
 const finishLineGeometry = new THREE.BoxGeometry(1.24, 0.026, 0.08);
 const overloadRingGeometry = new THREE.RingGeometry(0.48, 0.66, 48);
 const phaseRingGeometry = new THREE.RingGeometry(0.48, 0.67, 6);
+const driftRailGeometry = new THREE.BoxGeometry(2.4, 0.022, 0.07);
+const driftMarkerGeometry = new THREE.CylinderGeometry(0.11, 0.11, 0.035, 24);
 const landingArrowShape = new THREE.Shape()
   .moveTo(0, 0.28)
   .lineTo(0.36, -0.02)
@@ -100,6 +103,20 @@ const phaseRingMaterial = new THREE.MeshBasicMaterial({
   depthWrite: false,
   side: THREE.DoubleSide,
 });
+const driftRailMaterial = new THREE.MeshBasicMaterial({
+  color: driftPad.edge,
+  transparent: true,
+  opacity: 0.5,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const driftMarkerMaterial = new THREE.MeshBasicMaterial({
+  color: driftPad.emissive,
+  transparent: true,
+  opacity: 0.75,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
 const wildcardStripeMaterials = [
   new THREE.MeshBasicMaterial({
     color: gameColors.red.emissive,
@@ -155,6 +172,10 @@ export function createLandingPads(scene) {
     const finishLine = new THREE.Mesh(finishLineGeometry, finishGoalMaterial.clone());
     const overloadRing = new THREE.Mesh(overloadRingGeometry, overloadRingMaterial.clone());
     const phaseRing = new THREE.Mesh(phaseRingGeometry, phaseRingMaterial.clone());
+    const driftRail = new THREE.Mesh(driftRailGeometry, driftRailMaterial.clone());
+    const driftMarkers = [0, 1].map(() => (
+      new THREE.Mesh(driftMarkerGeometry, driftMarkerMaterial.clone())
+    ));
     const stripes = wildcardStripeMaterials.map((material, stripeIndex) => {
       const stripe = new THREE.Mesh(wildcardStripeGeometry, material.clone());
       stripe.position.set((stripeIndex - 1) * 0.48, 0.105, 0);
@@ -180,6 +201,12 @@ export function createLandingPads(scene) {
     phaseRing.rotation.x = -Math.PI / 2;
     phaseRing.position.set(0, 0.14, 0);
     phaseRing.visible = false;
+    driftRail.position.set(0, 0.105, 0.56);
+    driftRail.visible = false;
+    driftMarkers.forEach((marker) => {
+      marker.position.set(0, 0.125, 0.56);
+      marker.visible = false;
+    });
     pad.add(body);
     pad.add(edges);
     arrows.forEach((arrow) => pad.add(arrow));
@@ -189,6 +216,8 @@ export function createLandingPads(scene) {
     pad.add(finishLine);
     pad.add(overloadRing);
     pad.add(phaseRing);
+    pad.add(driftRail);
+    driftMarkers.forEach((marker) => pad.add(marker));
     stripes.forEach((stripe) => pad.add(stripe));
     beacons.forEach((beacon) => pad.add(beacon));
     pad.userData.body = body;
@@ -200,6 +229,8 @@ export function createLandingPads(scene) {
     pad.userData.finishLine = finishLine;
     pad.userData.overloadRing = overloadRing;
     pad.userData.phaseRing = phaseRing;
+    pad.userData.driftRail = driftRail;
+    pad.userData.driftMarkers = driftMarkers;
     pad.userData.stripes = stripes;
     pad.userData.beacons = beacons;
     scene.add(pad);
@@ -215,7 +246,8 @@ export function applyPlatformVisual(
   isCurrentTarget,
   isFinishLanding = false,
   showShard = false,
-  phaseState = null
+  phaseState = null,
+  driftState = null
 ) {
   const bodyMaterial = pad.userData.body.material;
   const edgeMaterial = pad.userData.edges.material;
@@ -228,12 +260,22 @@ export function applyPlatformVisual(
   const beacons = pad.userData.beacons;
   const overloadRing = pad.userData.overloadRing;
   const phaseRing = pad.userData.phaseRing;
+  const driftRail = pad.userData.driftRail;
+  const driftMarkers = pad.userData.driftMarkers;
 
   finishRing.visible = isFinishLanding;
   finishLine.visible = isFinishLanding;
   shard.visible = showShard;
   overloadRing.visible = platform.type === 'overload';
   phaseRing.visible = platform.type === 'phase';
+  driftRail.visible = platform.type === 'drift';
+  driftMarkers.forEach((marker) => {
+    marker.visible = platform.type === 'drift';
+  });
+  arrows.forEach((arrow) => {
+    arrow.rotation.z = 0;
+  });
+
   if (showShard) {
     const animationTime = performance.now() * 0.004 + shard.userData.animationOffset;
     shard.position.y = 0.72 + Math.sin(animationTime) * 0.08;
@@ -263,17 +305,21 @@ export function applyPlatformVisual(
     precisionZone.scale.setScalar(isCurrentTarget ? 1.08 : 1);
     arrows.forEach((arrow, arrowIndex) => {
       arrow.material.color.setHex(0xffffff);
-      arrow.material.opacity = isCurrentTarget ? 0.38 - arrowIndex * 0.08 : 0.22 - arrowIndex * 0.05;
+      arrow.material.opacity = isCurrentTarget
+        ? 0.38 - arrowIndex * 0.08
+        : 0.22 - arrowIndex * 0.05;
     });
     stripes.forEach((stripe, stripeIndex) => {
       stripe.visible = true;
       stripe.material.opacity = isCurrentTarget ? 1 : 0.86;
-      stripe.position.y = 0.11 + Math.sin(performance.now() * 0.006 + stripeIndex) * 0.012;
+      stripe.position.y =
+        0.11 + Math.sin(performance.now() * 0.006 + stripeIndex) * 0.012;
     });
     beacons.forEach((beacon, beaconIndex) => {
       beacon.visible = true;
       beacon.material.opacity = isCurrentTarget ? 1 : 0.82;
-      beacon.scale.y = 1 + Math.sin(performance.now() * 0.006 + beaconIndex) * 0.16;
+      beacon.scale.y =
+        1 + Math.sin(performance.now() * 0.006 + beaconIndex) * 0.16;
     });
     return;
   }
@@ -295,7 +341,9 @@ export function applyPlatformVisual(
     overloadRing.scale.setScalar(pulse * (isCurrentTarget ? 1.08 : 1));
     arrows.forEach((arrow, arrowIndex) => {
       arrow.material.color.setHex(overloadPad.emissive);
-      arrow.material.opacity = isCurrentTarget ? 0.52 - arrowIndex * 0.08 : 0.34 - arrowIndex * 0.06;
+      arrow.material.opacity = isCurrentTarget
+        ? 0.52 - arrowIndex * 0.08
+        : 0.34 - arrowIndex * 0.06;
     });
     stripes.forEach((stripe) => {
       stripe.visible = false;
@@ -317,20 +365,65 @@ export function applyPlatformVisual(
       : phasePad.inactiveEdge;
     bodyMaterial.color.setHex(phasePad.pad);
     bodyMaterial.emissive.setHex(emissiveColor);
-    bodyMaterial.emissiveIntensity = 0.9 + phaseIntensity * (isCurrentTarget ? 2.1 : 1.4);
+    bodyMaterial.emissiveIntensity =
+      0.9 + phaseIntensity * (isCurrentTarget ? 2.1 : 1.4);
     bodyMaterial.opacity = 0.78 + phaseIntensity * 0.18;
     edgeMaterial.color.setHex(edgeColor);
     edgeMaterial.opacity = 0.5 + phaseIntensity * 0.48;
     precisionZone.material.color.setHex(edgeColor);
-    precisionZone.material.opacity = 0.18 + phaseIntensity * (isCurrentTarget ? 0.58 : 0.38);
+    precisionZone.material.opacity =
+      0.18 + phaseIntensity * (isCurrentTarget ? 0.58 : 0.38);
     precisionZone.scale.setScalar(1 + phaseIntensity * 0.12);
     phaseRing.material.color.setHex(edgeColor);
-    phaseRing.material.opacity = 0.24 + phaseIntensity * (isPhaseActive ? 0.72 : 0.32);
-    phaseRing.rotation.z = performance.now() * (isPhaseActive ? 0.0024 : -0.0012);
-    phaseRing.scale.setScalar((0.96 + phaseIntensity * 0.16) * (isCurrentTarget ? 1.08 : 1));
+    phaseRing.material.opacity =
+      0.24 + phaseIntensity * (isPhaseActive ? 0.72 : 0.32);
+    phaseRing.rotation.z =
+      performance.now() * (isPhaseActive ? 0.0024 : -0.0012);
+    phaseRing.scale.setScalar(
+      (0.96 + phaseIntensity * 0.16) * (isCurrentTarget ? 1.08 : 1)
+    );
     arrows.forEach((arrow, arrowIndex) => {
       arrow.material.color.setHex(emissiveColor);
-      arrow.material.opacity = 0.12 + phaseIntensity * (0.38 - arrowIndex * 0.06);
+      arrow.material.opacity =
+        0.12 + phaseIntensity * (0.38 - arrowIndex * 0.06);
+    });
+    stripes.forEach((stripe) => {
+      stripe.visible = false;
+    });
+    beacons.forEach((beacon) => {
+      beacon.visible = false;
+    });
+    return;
+  }
+
+  if (platform.type === 'drift') {
+    const pulse = 0.84 + (driftState?.speed ?? 0) * 0.16;
+    const dynamicX = driftState?.x ?? platform.x;
+    const midpointX = driftState?.midpointX ?? platform.x;
+    bodyMaterial.color.setHex(driftPad.pad);
+    bodyMaterial.emissive.setHex(driftPad.emissive);
+    bodyMaterial.emissiveIntensity = isCurrentTarget ? 2.35 : 1.55;
+    bodyMaterial.opacity = 0.94;
+    edgeMaterial.color.setHex(driftPad.edge);
+    edgeMaterial.opacity = isCurrentTarget ? 1 : 0.86;
+    precisionZone.material.color.setHex(driftPad.edge);
+    precisionZone.material.opacity = isCurrentTarget ? 0.68 : 0.34;
+    precisionZone.scale.setScalar(isCurrentTarget ? 1.12 : 1.03);
+    driftRail.position.x = midpointX - dynamicX;
+    driftRail.material.opacity = isCurrentTarget ? 0.78 : 0.46;
+    driftMarkers[0].position.x = platform.x - dynamicX;
+    driftMarkers[1].position.x = platform.driftTargetX - dynamicX;
+    driftMarkers.forEach((marker, markerIndex) => {
+      marker.material.opacity = isCurrentTarget ? 0.95 : 0.66;
+      marker.scale.setScalar(pulse + markerIndex * 0.04);
+    });
+    arrows.forEach((arrow, arrowIndex) => {
+      arrow.material.color.setHex(driftPad.edge);
+      arrow.material.opacity = isCurrentTarget
+        ? 0.54 - arrowIndex * 0.08
+        : 0.32 - arrowIndex * 0.06;
+      arrow.rotation.z =
+        (driftState?.direction ?? 1) > 0 ? -Math.PI / 2 : Math.PI / 2;
     });
     stripes.forEach((stripe) => {
       stripe.visible = false;
@@ -359,6 +452,8 @@ export function applyPlatformVisual(
   precisionZone.scale.setScalar(isCurrentTarget ? 1.08 : 1);
   arrows.forEach((arrow, arrowIndex) => {
     arrow.material.color.setHex(color.edge);
-    arrow.material.opacity = isCurrentTarget ? 0.34 - arrowIndex * 0.07 : 0.2 - arrowIndex * 0.05;
+    arrow.material.opacity = isCurrentTarget
+      ? 0.34 - arrowIndex * 0.07
+      : 0.2 - arrowIndex * 0.05;
   });
 }

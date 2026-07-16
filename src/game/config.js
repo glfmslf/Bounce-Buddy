@@ -90,3 +90,9 @@ export const phasePad = {
   inactiveEmissive: 0x796dff,
   inactiveEdge: 0x9b91ff,
 };
+export const driftPad = {
+  label: '\u6f02\u79fb',
+  pad: 0x123b35,
+  emissive: 0x4dffb8,
+  edge: 0xfff27a,
+};

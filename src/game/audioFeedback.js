@@ -85,6 +85,12 @@ export function getFeedbackSequence(event, color = 'red') {
         tone(784, { delay: 0.04, duration: 0.13, gain: 0.027, type: 'sine' }),
         tone(1047, { delay: 0.09, duration: 0.18, gain: 0.024, type: 'sine' }),
       ];
+    case 'drift':
+      return [
+        tone(392, { duration: 0.07, gain: 0.022, type: 'triangle' }),
+        tone(659, { delay: 0.04, duration: 0.11, gain: 0.028, type: 'sine' }),
+        tone(880, { delay: 0.09, duration: 0.16, gain: 0.025, type: 'triangle' }),
+      ];
     case 'speedUp':
       return [
         tone(392, { duration: 0.08, gain: 0.024 }),

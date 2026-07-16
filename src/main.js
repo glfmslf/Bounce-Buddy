@@ -39,6 +39,7 @@ import {
   findPlatformAt,
   findValidPlatformForColor,
   getLandingPlatforms,
+  getPlatformPositionX,
   getRouteCacheStats,
   getRouteSample,
   getRouteSeed,
@@ -88,6 +89,11 @@ import {
   overloadFocusBonus,
   overloadSpeedBonus,
 } from './game/overloadPlatform.js';
+import {
+  driftBonusScore,
+  driftFocusBonus,
+  getDriftPlatformState,
+} from './game/driftPlatform.js';
 import {
   getPhasePlatformState,
   phaseBonusScore,
@@ -2051,9 +2057,9 @@ function shiftTargetLane(direction) {
   targetBallX = lanePositions[nextLane];
 }
 
-function isLandingValid(platform, x) {
+function isLandingValid(platform, x, elapsedSeconds = 0) {
   return Boolean(platform) &&
-    Math.abs(x - platform.x) <= platformHalfWidth &&
+    Math.abs(x - getPlatformPositionX(platform, elapsedSeconds)) <= platformHalfWidth &&
     platformMatchesColor(platform, currentBallColor);
 }
 
@@ -2461,7 +2467,7 @@ function animate() {
   ) {
     const landingIndex = lastProcessedLanding + 1;
     const landingZ = nearZ - landingIndex * landingGap;
-    const platform = findPlatformAt(landingIndex, ballX);
+    const platform = findPlatformAt(landingIndex, ballX, phaseElapsedSeconds);
     const onPlatform = Boolean(platform);
     const landed = onPlatform && platformMatchesColor(platform, currentBallColor);
     const impactColorKey = landed && platform.type === 'wildcard'
@@ -2473,9 +2479,11 @@ function animate() {
 
     if (landed) {
       const missionWasComplete = currentMode === 'level' && isMissionComplete();
+      const platformX = getPlatformPositionX(platform, phaseElapsedSeconds);
       const isPerfectLanding =
-        Math.abs(ballX - platform.x) < perfectLandingRadius;
+        Math.abs(ballX - platformX) < perfectLandingRadius;
       const didActivateOverload = platform.type === 'overload';
+      const didCatchDrift = platform.type === 'drift';
       const phaseState = platform.type === 'phase'
         ? getPhasePlatformState(platform, phaseElapsedSeconds)
         : null;
@@ -2486,7 +2494,8 @@ function animate() {
         score +
         1 +
         (didActivateOverload ? overloadBonusScore : 0) +
-        (didSyncPhase ? phaseBonusScore : 0)
+        (didSyncPhase ? phaseBonusScore : 0) +
+        (didCatchDrift ? driftBonusScore : 0)
       );
       setCombo(getNextLandingCombo(previousCombo));
       setFocusCharge(getFocusChargeAfterLanding({
@@ -2499,6 +2508,9 @@ function animate() {
       }
       if (didSyncPhase && !isFocusReady(focusCharge)) {
         setFocusCharge(focusCharge + phaseFocusBonus);
+      }
+      if (didCatchDrift && !isFocusReady(focusCharge)) {
+        setFocusCharge(focusCharge + driftFocusBonus);
       }
       const specialFocusGain = focusCharge - focusChargeBeforeSpecial;
       updateOverloadAfterLanding(didActivateOverload);
@@ -2517,7 +2529,6 @@ function animate() {
         setShardCount(shardCount + 1);
       }
       const shardMessage = didCollectShard ? ' · 星尘 +1' : '';
-
       const focusMessage = didReadyFocus ? ' · 专注已就绪' : '';
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
@@ -2541,8 +2552,19 @@ function animate() {
           ? ` \u00b7 \u76f8\u4f4d\u540c\u6b65 +${phaseBonusScore} \u5206 \u00b7 ${specialFocusGain > 0 ? `\u4e13\u6ce8 +${specialFocusGain}` : '\u4e13\u6ce8\u5df2\u6ee1'}`
           : ' \u00b7 \u9519\u8fc7\u4eae\u76f8\u4f4d'
         : '';
+      const driftMessage = didCatchDrift
+        ? ' \u00b7 \u8ffd\u4e0a\u6f02\u79fb +' + driftBonusScore + ' \u5206 \u00b7 ' +
+          (specialFocusGain > 0
+            ? '\u4e13\u6ce8 +' + specialFocusGain
+            : '\u4e13\u6ce8\u5df2\u6ee1')
+        : '';
       const landingBonusMessage =
-        shardMessage + missionMessage + focusMessage + overloadMessage + phaseMessage;
+        shardMessage +
+        missionMessage +
+        focusMessage +
+        overloadMessage +
+        phaseMessage +
+        driftMessage;
       showComboMilestone(combo, { perfect: isPerfectLanding });
       const didSpeedGoUp = updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
@@ -2579,6 +2601,8 @@ function animate() {
           feedbackEvent = 'overload';
         } else if (didSyncPhase) {
           feedbackEvent = 'phase';
+        } else if (didCatchDrift) {
+          feedbackEvent = 'drift';
         } else if (didReadyFocus) {
           feedbackEvent = 'focusReady';
         } else if (didSpeedGoUp) {
@@ -2603,10 +2627,21 @@ function animate() {
   const nextLandingIndex = currentLanding + 1;
   const nextPadZ = nearZ - nextLandingIndex * landingGap;
   const nextPlatforms = getLandingPlatforms(nextLandingIndex);
-  const nextPlatform = findPlatformAt(nextLandingIndex, targetBallX);
-  const targetWillLand = isLandingValid(nextPlatform, targetBallX);
+  const nextPlatform = findPlatformAt(
+    nextLandingIndex,
+    targetBallX,
+    phaseElapsedSeconds
+  );
+  const targetWillLand = isLandingValid(
+    nextPlatform,
+    targetBallX,
+    phaseElapsedSeconds
+  );
   const nextPhaseState = nextPlatform?.type === 'phase'
     ? getPhasePlatformState(nextPlatform, phaseElapsedSeconds)
+    : null;
+  const nextDriftState = nextPlatform?.type === 'drift'
+    ? getDriftPlatformState(nextPlatform, phaseElapsedSeconds)
     : null;
   window.__bounceBuddyDebug = {
     ballY: ball.position.y,
@@ -2646,6 +2681,7 @@ function animate() {
     overloadActive: isOverloadActive(overloadState),
     overloadRemaining: overloadState.remainingLandings,
     nextPhaseState,
+    nextDriftState,
     hopTimeScale,
   };
 
@@ -2653,11 +2689,13 @@ function animate() {
   targetMarker.position.set(targetBallX, 0.13, nextPadZ);
   targetMarker.material.opacity = isGameRunning && !isPaused ? 0.68 + bounce * 0.22 : 0;
   targetMarker.material.color.setHex(
-    nextPhaseState?.active
-      ? 0xe8ff76
-      : targetWillLand
-        ? 0x91f7ff
-        : 0xff6fa3
+    nextDriftState
+      ? 0xfff27a
+      : nextPhaseState?.active
+        ? 0xe8ff76
+        : targetWillLand
+          ? 0x91f7ff
+          : 0xff6fa3
   );
   targetMarker.scale.setScalar(1 + bounce * 0.18);
 
@@ -2676,14 +2714,20 @@ function animate() {
         continue;
       }
 
+      const driftState = platform.type === 'drift'
+        ? getDriftPlatformState(platform, phaseElapsedSeconds)
+        : null;
+      const platformX = driftState?.x ?? platform.x;
       const isCurrentTarget =
-        landingIndex === currentLanding + 1 && Math.abs(targetBallX - platform.x) < 0.2;
-      const isFinishLanding = currentMode === 'level' && landingIndex === levelEndLanding;
+        landingIndex === currentLanding + 1 &&
+        isLandingValid(platform, targetBallX, phaseElapsedSeconds);
+      const isFinishLanding =
+        currentMode === 'level' && landingIndex === levelEndLanding;
       const targetScale = isCurrentTarget ? 1.12 : 1;
       const landingScale = distanceFromBall < 1.2 ? 1.05 : 1;
 
       pad.visible = true;
-      pad.position.set(platform.x, 0.08, padZ);
+      pad.position.set(platformX, 0.08, padZ);
       pad.scale.setScalar(targetScale * landingScale);
       applyPlatformVisual(
         pad,
@@ -2693,7 +2737,8 @@ function animate() {
         platform.hasShard && !collectedShardLandings.has(landingIndex),
         platform.type === 'phase'
           ? getPhasePlatformState(platform, phaseElapsedSeconds)
-          : null
+          : null,
+        driftState
       );
     }
   }

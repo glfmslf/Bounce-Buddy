@@ -72,6 +72,15 @@ import {
   withComboFeedback,
 } from './game/comboFeedback.js';
 import {
+  canActivateFocus,
+  focusChargeTarget,
+  focusDurationSeconds,
+  focusTimeScale,
+  getFocusChargeAfterLanding,
+  isFocusReady,
+  normalizeFocusCharge,
+} from './game/focusAbility.js';
+import {
   getCountdownDelay,
   getRunCountdownCopy,
   runCountdownSteps,
@@ -167,6 +176,9 @@ const levelBriefingPerformance = document.querySelector('.level-briefing-perform
 const levelBriefingCancel = document.querySelector('.level-briefing-cancel');
 const levelBriefingStart = document.querySelector('.level-briefing-start');
 const touchControlButtons = document.querySelectorAll('.touch-control-button');
+const focusControl = document.querySelector('.focus-control');
+const focusValue = document.querySelector('.focus-value');
+const focusStatus = document.querySelector('.focus-status');
 const coachTip = document.querySelector('.coach-tip');
 const coachDismissButton = document.querySelector('.coach-dismiss-button');
 const startButton = document.querySelector('.start-button');
@@ -259,6 +271,9 @@ let isCoachBlocking = false;
 let isCountdownActive = false;
 let runCountdownTimeoutId = null;
 let runCountdownSequenceId = 0;
+let focusCharge = 0;
+let focusRemaining = 0;
+let isFocusActive = false;
 let pointerStartX = null;
 let pointerStartY = null;
 let briefingLevel = 1;
@@ -815,6 +830,105 @@ function setCombo(value) {
   }
 }
 
+function updateFocusControl() {
+  const ready = isFocusReady(focusCharge);
+  const active = isFocusActive && focusRemaining > 0;
+  const remainingText = Math.max(0, focusRemaining).toFixed(1);
+  const available = canActivateFocus({
+    charge: focusCharge,
+    isActive: active,
+    isBlocked: isCoachBlocking || isCountdownActive,
+    isGameOver,
+    isGameRunning,
+    isLevelComplete,
+    isPaused,
+  });
+
+  focusControl.disabled = !available;
+  focusControl.classList.toggle('is-ready', ready && !active);
+  focusControl.classList.toggle('is-active', active);
+  focusValue.textContent = active
+    ? remainingText + 's'
+    : focusCharge + '/' + focusChargeTarget;
+  focusStatus.textContent = active ? '减速中' : ready ? '可释放' : '充能中';
+  focusControl.setAttribute(
+    'aria-label',
+    active
+      ? '专注生效，剩余 ' + remainingText + ' 秒'
+      : ready
+        ? '释放专注'
+        : '专注充能 ' + focusCharge + '/' + focusChargeTarget
+  );
+}
+
+function setFocusCharge(value) {
+  focusCharge = normalizeFocusCharge(value);
+  updateFocusControl();
+}
+
+function stopFocus({ announce = false } = {}) {
+  const wasActive = isFocusActive;
+  isFocusActive = false;
+  focusRemaining = 0;
+  document.body.classList.remove('is-focus-active');
+  updateFocusControl();
+
+  if (wasActive && announce && isGameRunning && !isGameOver && !isLevelComplete) {
+    gameMessage.textContent = '专注结束 · 节奏恢复';
+  }
+}
+
+function resetFocusAbility() {
+  isFocusActive = false;
+  focusRemaining = 0;
+  focusCharge = 0;
+  document.body.classList.remove('is-focus-active');
+  updateFocusControl();
+}
+
+function activateFocus() {
+  if (!canActivateFocus({
+    charge: focusCharge,
+    isActive: isFocusActive,
+    isBlocked: isCoachBlocking || isCountdownActive,
+    isGameOver,
+    isGameRunning,
+    isLevelComplete,
+    isPaused,
+  })) {
+    return false;
+  }
+
+  focusCharge = 0;
+  focusRemaining = focusDurationSeconds;
+  isFocusActive = true;
+  document.body.classList.add('is-focus-active');
+  gameMessage.textContent = '专注启动 · 跳跃节奏放缓';
+  playGameFeedback('focusActivate', currentBallColor);
+  updateFocusControl();
+  return true;
+}
+
+function updateFocusAbility(delta) {
+  if (
+    !isFocusActive ||
+    !isGameRunning ||
+    isPaused ||
+    isCoachBlocking ||
+    isCountdownActive
+  ) {
+    return;
+  }
+
+  focusRemaining = Math.max(0, focusRemaining - delta);
+
+  if (focusRemaining === 0) {
+    stopFocus({ announce: true });
+    return;
+  }
+
+  updateFocusControl();
+}
 function setPerfectCount(value) {
   perfectCount = value;
   perfectValue.textContent = String(perfectCount);
@@ -993,6 +1107,7 @@ function startLevel(level, startLandingIndex) {
   levelStartLanding = startLandingIndex;
   levelEndLanding = levelStartLanding + getLevelLength(currentLevel);
   maxCombo = 0;
+  resetFocusAbility();
   missionBoard.classList.remove('is-mission-complete-pop');
   setPerfectCount(0);
   setRainbowCount(0);
@@ -1145,6 +1260,7 @@ function setPaused(paused, reason = 'manual') {
   pauseButton.textContent = isPaused ? '已暂停' : '暂停';
   pauseButton.setAttribute('aria-pressed', String(isPaused));
   applyPauseCopy(isPaused ? reason : 'manual');
+  updateFocusControl();
 
   if (isPaused) {
     hideComboMilestone();
@@ -1420,6 +1536,7 @@ function completeLevel(landingIndex) {
   isGameRunning = false;
   isLevelComplete = true;
   clearPauseState();
+  resetFocusAbility();
   hideComboMilestone();
   playGameFeedback('complete');
   completedLanding = landingIndex;
@@ -1826,6 +1943,7 @@ function showLevelSelect() {
   isGameOver = false;
   isLevelComplete = false;
   clearPauseState();
+  resetFocusAbility();
   document.body.classList.remove('is-playing');
   document.body.classList.remove('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -1843,6 +1961,7 @@ function endGame(reason = '') {
   isGameOver = true;
   isLevelComplete = false;
   clearPauseState();
+  resetFocusAbility();
   playGameFeedback('death');
   document.body.classList.add('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -1936,6 +2055,7 @@ updateBestScoreDisplay();
 setBallColor(currentBallColor);
 setSpeedLevel(selectedSpeedLevel);
 setCombo(combo);
+resetFocusAbility();
 updateLevelHud(0);
 syncAchievements();
 renderLevelSelect();
@@ -2005,6 +2125,10 @@ deathLevelsButton.addEventListener('click', () => {
 coachDismissButton.addEventListener('click', () => {
   hideCoachTip({ persist: true });
   startRunCountdown();
+});
+
+focusControl.addEventListener('click', () => {
+  activateFocus();
 });
 
 pauseButton.addEventListener('click', () => {
@@ -2077,6 +2201,15 @@ window.addEventListener('keydown', (event) => {
     return;
   }
 
+  if (
+    event.code === 'Space' &&
+    (document.activeElement === document.body || document.activeElement === focusControl)
+  ) {
+    event.preventDefault();
+    activateFocus();
+    return;
+  }
+
   if (event.code === 'ArrowLeft' || event.code === 'KeyA') {
     shiftTargetLane(-1);
   }
@@ -2111,9 +2244,11 @@ renderer.domElement.addEventListener('pointerup', (event) => {
 function animate() {
   timer.update();
   const delta = timer.getDelta();
+  updateFocusAbility(delta);
+  const hopTimeScale = isFocusActive ? focusTimeScale : 1;
 
   if (isGameRunning && !isPaused && !isCoachBlocking && !isCountdownActive) {
-    hopProgress += hopRate * delta;
+    hopProgress += hopRate * delta * hopTimeScale;
   }
 
   if (!isPaused && !isCoachBlocking && !isCountdownActive) {
@@ -2167,12 +2302,19 @@ function animate() {
       const isPerfectLanding =
         Math.abs(ballX - platform.x) < perfectLandingRadius;
       const previousCombo = combo;
+      const previousFocusCharge = focusCharge;
       const comboBreakText = getComboBreakFeedbackText(
         previousCombo,
         isPerfectLanding
       );
       setScore(score + 1);
       setCombo(getNextPrecisionCombo(previousCombo, isPerfectLanding));
+      setFocusCharge(getFocusChargeAfterLanding({
+        charge: previousFocusCharge,
+        isPerfectLanding,
+      }));
+      const didReadyFocus =
+        !isFocusReady(previousFocusCharge) && isFocusReady(focusCharge);
       if (isPerfectLanding) {
         setPerfectCount(perfectCount + 1);
       }
@@ -2189,6 +2331,7 @@ function animate() {
       const comboBreakMessage = comboBreakText
         ? ' · ' + comboBreakText
         : '';
+      const focusMessage = didReadyFocus ? ' · 专注已就绪' : '';
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
         setRainbowCount(rainbowCount + 1);
@@ -2204,7 +2347,7 @@ function animate() {
         ? ' · 任务完成'
         : '';
       const landingBonusMessage =
-        shardMessage + missionMessage + comboBreakMessage;
+        shardMessage + missionMessage + comboBreakMessage + focusMessage;
       showComboMilestone(combo, { perfect: isPerfectLanding });
       const didSpeedGoUp = updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
@@ -2237,6 +2380,8 @@ function animate() {
           feedbackEvent = 'mission';
         } else if (didCollectShard) {
           feedbackEvent = 'shard';
+        } else if (didReadyFocus) {
+          feedbackEvent = 'focusReady';
         } else if (didSpeedGoUp) {
           feedbackEvent = 'speedUp';
         } else if (platform.type === 'wildcard') {
@@ -2293,6 +2438,11 @@ function animate() {
     perfectLandingRadius,
     landingPadPoolSize: landingPads.length,
     precisionZonePoolSize: landingPads.length,
+    focusCharge,
+    focusReady: isFocusReady(focusCharge),
+    focusActive: isFocusActive,
+    focusRemaining,
+    hopTimeScale,
   };
 
   targetMarker.visible = isGameRunning && !isPaused && !isLevelComplete;

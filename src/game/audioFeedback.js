@@ -61,6 +61,18 @@ export function getFeedbackSequence(event, color = 'red') {
         tone(988, { delay: 0.045, duration: 0.1, gain: 0.028 }),
         tone(1318, { delay: 0.1, duration: 0.16, gain: 0.025 }),
       ];
+    case 'focusReady':
+      return [
+        tone(392, { duration: 0.07, gain: 0.022, type: 'triangle' }),
+        tone(659, { delay: 0.05, duration: 0.1, gain: 0.026, type: 'triangle' }),
+        tone(988, { delay: 0.11, duration: 0.16, gain: 0.028 }),
+      ];
+    case 'focusActivate':
+      return [
+        tone(784, { duration: 0.1, gain: 0.024, type: 'triangle' }),
+        tone(523, { delay: 0.055, duration: 0.16, gain: 0.026, type: 'triangle' }),
+        tone(392, { delay: 0.12, duration: 0.24, gain: 0.022 }),
+      ];
     case 'speedUp':
       return [
         tone(392, { duration: 0.08, gain: 0.024 }),

@@ -72,6 +72,12 @@ import {
   withComboFeedback,
 } from './game/comboFeedback.js';
 import {
+  canUseReboundShield,
+  getReboundShieldProgress,
+  reboundShieldComboTarget,
+  shouldChargeReboundShield,
+} from './game/reboundShield.js';
+import {
   canActivateFocus,
   focusChargeTarget,
   focusDurationSeconds,
@@ -216,6 +222,7 @@ const levelValue = document.querySelector('.level-value');
 const remainingValue = document.querySelector('.remaining-value');
 const comboBoard = document.querySelector('.combo-board');
 const comboValue = document.querySelector('.combo-value');
+const reboundShieldStatus = document.querySelector('.rebound-shield-status');
 const comboMilestone = document.querySelector('.combo-milestone');
 const comboMilestoneKicker = document.querySelector('.combo-milestone-kicker');
 const comboMilestoneTitle = document.querySelector('.combo-milestone-title');
@@ -283,6 +290,7 @@ let selectedSpeedLevel = Number(speedSelect.value);
 let currentSpeedLevel = selectedSpeedLevel;
 let speedPulseTimeoutId = null;
 let comboMilestoneTimeoutId = null;
+let reboundSaveTimeoutId = null;
 let achievementToastTimeoutId = null;
 let hasSeenTutorial = readTutorialSeen();
 let soundEnabled = readSoundEnabled();
@@ -296,6 +304,7 @@ let focusCharge = 0;
 let focusRemaining = 0;
 let isFocusActive = false;
 let overloadState = createOverloadState();
+let reboundShieldReady = false;
 let pointerStartX = null;
 let pointerStartY = null;
 let briefingLevel = 1;
@@ -947,14 +956,74 @@ function pulseComboHud(value) {
   }
 }
 
+function updateReboundShieldHud() {
+  const progress = getReboundShieldProgress(combo, reboundShieldReady);
+  const statusText = reboundShieldReady
+    ? '\u56de\u5f39\u5c31\u7eea'
+    : '\u62a4\u76fe ' + progress + '/' + reboundShieldComboTarget;
+
+  reboundShieldStatus.textContent = statusText;
+  comboBoard.classList.toggle('is-shield-ready', reboundShieldReady);
+  comboBoard.setAttribute(
+    'aria-label',
+    '\u843d\u5730\u8fde\u51fb ' + combo + '\uff0c' + statusText
+  );
+}
+
+function setReboundShieldReady(value) {
+  reboundShieldReady = Boolean(value);
+  updateReboundShieldHud();
+}
+
+function resetReboundShield() {
+  window.clearTimeout(reboundSaveTimeoutId);
+  reboundSaveTimeoutId = null;
+  document.body.classList.remove('is-rebound-saved');
+  setReboundShieldReady(false);
+}
+
+function chargeReboundShield(value = combo) {
+  if (!shouldChargeReboundShield(value, reboundShieldReady)) {
+    return false;
+  }
+
+  setReboundShieldReady(true);
+  return true;
+}
+
+function flashReboundSave() {
+  window.clearTimeout(reboundSaveTimeoutId);
+  document.body.classList.remove('is-rebound-saved');
+  void document.body.offsetWidth;
+  document.body.classList.add('is-rebound-saved');
+
+  reboundSaveTimeoutId = window.setTimeout(() => {
+    document.body.classList.remove('is-rebound-saved');
+    reboundSaveTimeoutId = null;
+  }, 820);
+}
+
 function hideComboMilestone() {
   window.clearTimeout(comboMilestoneTimeoutId);
   comboMilestoneTimeoutId = null;
-  comboMilestone.classList.remove('is-visible', 'is-major', 'is-perfect');
-  comboMilestoneFlash.classList.remove('is-visible', 'is-major', 'is-perfect');
+  comboMilestone.classList.remove(
+    'is-visible',
+    'is-major',
+    'is-perfect',
+    'is-shield'
+  );
+  comboMilestoneFlash.classList.remove(
+    'is-visible',
+    'is-major',
+    'is-perfect',
+    'is-shield'
+  );
 }
 
-function showComboMilestone(value, { perfect = false } = {}) {
+function showComboMilestone(
+  value,
+  { perfect = false, shieldCharged = false } = {}
+) {
   const milestone = getComboMilestone(value);
 
   if (!milestone) {
@@ -962,9 +1031,13 @@ function showComboMilestone(value, { perfect = false } = {}) {
   }
 
   window.clearTimeout(comboMilestoneTimeoutId);
-  comboMilestoneKicker.textContent = milestone.kicker;
+  comboMilestoneKicker.textContent = shieldCharged
+    ? '\u56de\u5f39\u62a4\u76fe'
+    : milestone.kicker;
   comboMilestoneTitle.textContent = milestone.title;
-  comboMilestoneDetail.textContent = milestone.detail;
+  comboMilestoneDetail.textContent = shieldCharged
+    ? '\u4e0b\u4e00\u6b21\u5931\u8bef\u4f1a\u81ea\u52a8\u6551\u63f4'
+    : milestone.detail;
 
   comboMilestone.classList.remove('is-visible');
   comboMilestoneFlash.classList.remove('is-visible');
@@ -974,8 +1047,10 @@ function showComboMilestone(value, { perfect = false } = {}) {
   const isMajor = milestone.level === 'major';
   comboMilestone.classList.toggle('is-major', isMajor);
   comboMilestone.classList.toggle('is-perfect', perfect);
+  comboMilestone.classList.toggle('is-shield', shieldCharged);
   comboMilestoneFlash.classList.toggle('is-major', isMajor);
   comboMilestoneFlash.classList.toggle('is-perfect', perfect);
+  comboMilestoneFlash.classList.toggle('is-shield', shieldCharged);
   comboMilestone.classList.add('is-visible');
   comboMilestoneFlash.classList.add('is-visible');
 
@@ -992,6 +1067,7 @@ function setCombo(value) {
   comboValue.textContent = String(combo);
   pulseComboHud(combo);
   updateRunRecordHud();
+  updateReboundShieldHud();
 
   if (combo === 0) {
     hideComboMilestone();
@@ -1323,7 +1399,7 @@ function clearRunCountdown() {
   runCountdown.classList.remove('is-go', 'is-step-pulse');
 }
 
-function startRunCountdown() {
+function startRunCountdown(copyOverride = null) {
   clearRunCountdown();
 
   if (
@@ -1336,7 +1412,7 @@ function startRunCountdown() {
   }
 
   const sequenceId = runCountdownSequenceId;
-  const copy = getRunCountdownCopy({
+  const copy = copyOverride ?? getRunCountdownCopy({
     levelName: getLevelName(currentLevel),
     missionText: currentMode === 'level' ? getMissionSummary() : '',
     mode: currentMode,
@@ -1764,8 +1840,11 @@ function completeLevel(landingIndex) {
     : `\u4efb\u52a1\u672a\u5b8c\u6210\uff1a${getMissionProgressText()}`;
   levelCompleteNextGoal.textContent = getNextLevelGoalText(levelCatalog[nextLevel - 1]);
   const perfectSummary = 'Perfect ' + perfectCount + '/' + getLevelLength(completedLevel);
+  const reboundCarryText = reboundShieldReady
+    ? ' \u00b7 \u56de\u5f39\u62a4\u76fe\u5df2\u5c31\u7eea'
+    : '';
   levelCompleteScore.textContent =
-    perfectSummary + ' · 最高连击 ' + maxCombo;
+    perfectSummary + ' \u00b7 \u6700\u9ad8\u8fde\u51fb ' + maxCombo + reboundCarryText;
   syncAchievements({ announce: true });
   nextLevelButton.textContent = hasNextLevel ? '进入下一关' : '回到选关';
   gameMessage.textContent = `「${getLevelName(completedLevel)}」完成`;
@@ -2063,6 +2142,62 @@ function isLandingValid(platform, x, elapsedSeconds = 0) {
     platformMatchesColor(platform, currentBallColor);
 }
 
+function triggerReboundShieldRescue(landingIndex) {
+  const safePlatform = findValidPlatformForColor(landingIndex, currentBallColor);
+
+  if (!canUseReboundShield({
+    hasSafePlatform: Boolean(safePlatform),
+    isGameRunning,
+    isReady: reboundShieldReady,
+  })) {
+    return false;
+  }
+
+  setReboundShieldReady(false);
+  setCombo(0);
+  setFocusCharge(getFocusChargeAfterLanding({
+    charge: focusCharge,
+    isPerfectLanding: false,
+  }));
+  updateOverloadAfterLanding(false);
+  updateSpeedForScore(score);
+
+  const safeX = safePlatform.x;
+  const landingZ = nearZ - landingIndex * landingGap;
+  const impactColorKey = safePlatform.type === 'wildcard'
+    ? safePlatform.nextColor
+    : currentBallColor;
+  ballX = safeX;
+  targetBallX = safeX;
+
+  if (safePlatform.type === 'wildcard') {
+    setBallColor(safePlatform.nextColor);
+  }
+
+  createImpact(safeX, landingZ, impactColorKey);
+  flashReboundSave();
+  playGameFeedback('reboundSave', impactColorKey);
+  updateLevelHud(landingIndex);
+
+  const completesLevel =
+    currentMode === 'level' && landingIndex >= levelEndLanding;
+
+  if (completesLevel) {
+    completeLevel(landingIndex);
+    return true;
+  }
+
+  targetBallX =
+    findValidPlatformForColor(landingIndex + 1, currentBallColor)?.x ?? safeX;
+  gameMessage.textContent =
+    '\u56de\u5f39\u62a4\u76fe\u6551\u63f4 \u00b7 \u8fde\u51fb\u5f52\u96f6 \u00b7 \u91cd\u65b0\u7784\u51c6';
+  startRunCountdown({
+    detail: '\u5df2\u56de\u5230\u5b89\u5168\u843d\u70b9 \u00b7 \u91cd\u65b0\u7784\u51c6',
+    kicker: '\u56de\u5f39\u62a4\u76fe',
+  });
+  return true;
+}
+
 window.__bounceBuddySimulateRoute = simulateReachableRoute;
 window.__bounceBuddyGetRouteSample = getRouteSample;
 
@@ -2088,6 +2223,7 @@ function startRun(level = 1, mode = 'level') {
     currentMode === 'level' ? getLevelRouteSeed(level) : undefined
   );
   collectedShardLandings.clear();
+  resetReboundShield();
   setScore(0);
   setCombo(0);
   startLevel(level, 0);
@@ -2120,6 +2256,7 @@ function showLevelSelect() {
   clearPauseState();
   resetFocusAbility();
   resetOverload();
+  resetReboundShield();
   document.body.classList.remove('is-playing');
   document.body.classList.remove('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -2139,6 +2276,7 @@ function endGame(reason = '') {
   clearPauseState();
   resetFocusAbility();
   resetOverload();
+  resetReboundShield();
   playGameFeedback('death');
   document.body.classList.add('is-game-over');
   document.body.classList.remove('is-level-complete');
@@ -2234,6 +2372,7 @@ setSpeedLevel(selectedSpeedLevel);
 setCombo(combo);
 resetFocusAbility();
 resetOverload();
+resetReboundShield();
 updateLevelHud(0);
 syncAchievements();
 renderLevelSelect();
@@ -2498,6 +2637,7 @@ function animate() {
         (didCatchDrift ? driftBonusScore : 0)
       );
       setCombo(getNextLandingCombo(previousCombo));
+      const didChargeReboundShield = chargeReboundShield(combo);
       setFocusCharge(getFocusChargeAfterLanding({
         charge: previousFocusCharge,
         isPerfectLanding,
@@ -2530,6 +2670,9 @@ function animate() {
       }
       const shardMessage = didCollectShard ? ' · 星尘 +1' : '';
       const focusMessage = didReadyFocus ? ' · 专注已就绪' : '';
+      const reboundShieldMessage = didChargeReboundShield
+        ? ' · 回弹护盾已就绪'
+        : '';
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
         setRainbowCount(rainbowCount + 1);
@@ -2564,8 +2707,12 @@ function animate() {
         focusMessage +
         overloadMessage +
         phaseMessage +
-        driftMessage;
-      showComboMilestone(combo, { perfect: isPerfectLanding });
+        driftMessage +
+        reboundShieldMessage;
+      showComboMilestone(combo, {
+        perfect: isPerfectLanding,
+        shieldCharged: didChargeReboundShield,
+      });
       const didSpeedGoUp = updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
         const landingMessage = isPerfectLanding
@@ -2595,6 +2742,8 @@ function animate() {
 
         if (didCompleteMission) {
           feedbackEvent = 'mission';
+        } else if (didChargeReboundShield) {
+          feedbackEvent = 'reboundReady';
         } else if (didCollectShard) {
           feedbackEvent = 'shard';
         } else if (didActivateOverload) {
@@ -2620,7 +2769,13 @@ function animate() {
         completeLevel(landingIndex);
       }
     } else {
-      endGame(onPlatform ? '颜色不匹配' : '没有落到平台');
+      const failureReason = onPlatform
+        ? '\u989c\u8272\u4e0d\u5339\u914d'
+        : '\u6ca1\u6709\u843d\u5230\u5e73\u53f0';
+
+      if (!triggerReboundShieldRescue(landingIndex)) {
+        endGame(failureReason);
+      }
     }
   }
 
@@ -2678,6 +2833,8 @@ function animate() {
     focusReady: isFocusReady(focusCharge),
     focusActive: isFocusActive,
     focusRemaining,
+    reboundShieldReady,
+    reboundShieldProgress: getReboundShieldProgress(combo, reboundShieldReady),
     overloadActive: isOverloadActive(overloadState),
     overloadRemaining: overloadState.remainingLandings,
     nextPhaseState,

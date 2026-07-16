@@ -61,6 +61,12 @@ export function getFeedbackSequence(event, color = 'red') {
         tone(988, { delay: 0.045, duration: 0.1, gain: 0.028 }),
         tone(1318, { delay: 0.1, duration: 0.16, gain: 0.025 }),
       ];
+    case 'reboundReady':
+      return [
+        tone(440, { duration: 0.07, gain: 0.024, type: 'triangle' }),
+        tone(659, { delay: 0.05, duration: 0.11, gain: 0.028, type: 'triangle' }),
+        tone(988, { delay: 0.11, duration: 0.18, gain: 0.026, type: 'sine' }),
+      ];
     case 'focusReady':
       return [
         tone(392, { duration: 0.07, gain: 0.022, type: 'triangle' }),
@@ -105,6 +111,17 @@ export function getFeedbackSequence(event, color = 'red') {
           gain: 0.02,
           type: 'triangle',
         }),
+      ];
+    case 'reboundSave':
+      return [
+        tone(220, {
+          duration: 0.12,
+          endFrequency: 440,
+          gain: 0.026,
+          type: 'triangle',
+        }),
+        tone(659, { delay: 0.09, duration: 0.15, gain: 0.03, type: 'sine' }),
+        tone(1047, { delay: 0.18, duration: 0.22, gain: 0.028, type: 'triangle' }),
       ];
     case 'death':
       return [

@@ -65,6 +65,35 @@ body.is-focus-active canvas {
   filter: brightness(1.05) saturate(1.16);
 }
 
+body.is-rebound-saved #app::before {
+  border-color: rgba(77, 255, 184, 0.9);
+  box-shadow:
+    0 0 28px rgba(77, 255, 184, 0.5) inset,
+    0 0 48px rgba(255, 242, 122, 0.3);
+  animation: rebound-save-frame 820ms ease-out both;
+}
+
+body.is-rebound-saved canvas {
+  filter: brightness(1.12) saturate(1.28);
+}
+
+@keyframes rebound-save-frame {
+  0% {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+
+  24% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.995);
+  }
+}
+
 .level-select-screen {
   position: fixed;
   inset: 0;
@@ -592,6 +621,30 @@ body.is-playing .level-select-screen {
   box-shadow:
     0 0 0 1px rgba(255, 239, 154, 0.18) inset,
     0 0 24px rgba(255, 210, 87, 0.26);
+}
+
+.rebound-shield-status {
+  min-height: 10px;
+  color: rgba(223, 248, 255, 0.6);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  transition:
+    color 180ms ease,
+    text-shadow 180ms ease;
+}
+
+.combo-board.is-shield-ready {
+  box-shadow:
+    0 0 0 1px rgba(77, 255, 184, 0.24) inset,
+    0 0 26px rgba(77, 255, 184, 0.24);
+}
+
+.combo-board.is-shield-ready .rebound-shield-status {
+  color: #9dffd6;
+  text-shadow: 0 0 14px rgba(77, 255, 184, 0.72);
 }
 
 .combo-value.is-combo-pop {
@@ -1466,6 +1519,10 @@ body.is-playing:not(.is-game-over) .score-board {
   min-width: 64px;
 }
 
+body.is-playing:not(.is-game-over) .combo-board {
+  min-width: 78px;
+}
+
 body.is-playing:not(.is-game-over) .score-board strong {
   font-size: 28px;
 }
@@ -2010,6 +2067,24 @@ body.is-coach-blocking .pause-button {
     0 0 48px rgba(255, 210, 87, 0.3);
 }
 
+.combo-milestone.is-shield .combo-milestone-kicker,
+.combo-milestone.is-shield .combo-milestone-detail {
+  color: #9dffd6;
+}
+
+.combo-milestone.is-shield .combo-milestone-title {
+  color: #fff59f;
+  text-shadow:
+    0 0 18px rgba(77, 255, 184, 0.82),
+    0 0 42px rgba(255, 242, 122, 0.46);
+}
+
+.combo-milestone-flash.is-shield {
+  box-shadow:
+    0 0 76px rgba(77, 255, 184, 0.42) inset,
+    0 0 112px rgba(255, 242, 122, 0.24) inset;
+}
+
 .combo-milestone-flash {
   position: fixed;
   inset: 0;
@@ -2074,7 +2149,8 @@ body.is-coach-blocking .pause-button {
 @media (prefers-reduced-motion: reduce) {
   .combo-milestone.is-visible,
   .combo-milestone-flash.is-visible,
-  .focus-control.is-ready {
+  .focus-control.is-ready,
+  body.is-rebound-saved #app::before {
     animation: none;
     opacity: 1;
   }

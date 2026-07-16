@@ -1,4 +1,4 @@
-import { normalizePrecisionCombo } from './comboFeedback.js';
+import { normalizeLandingCombo } from './comboFeedback.js';
 
 export const endlessRunHistoryLimit = 5;
 
@@ -14,12 +14,13 @@ function normalizeCount(value) {
 
 export function normalizeEndlessRun(run) {
   const perfect = normalizeCount(run?.perfect);
+  const score = normalizeCount(run?.score);
 
   return {
-    combo: normalizePrecisionCombo(run?.combo, perfect),
+    combo: normalizeLandingCombo(run?.combo),
     perfect,
     runNumber: normalizeCount(run?.runNumber),
-    score: normalizeCount(run?.score),
+    score,
     shards: normalizeCount(run?.shards),
     speed: Math.max(1, normalizeCount(run?.speed)),
   };

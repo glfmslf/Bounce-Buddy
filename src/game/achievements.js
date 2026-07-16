@@ -66,7 +66,7 @@ export const achievementCatalog = [
     id: 'combo-ten',
     icon: '10',
     name: '节拍上头',
-    description: '连续 10 次 Perfect',
+    description: '连续成功落地 10 次',
     getProgress: ({ endlessPerformance, levelPerformance, runBestCombo }) => ({
       current: Math.max(
         getBestLevelValue(levelPerformance, 'bestCombo'),

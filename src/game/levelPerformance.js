@@ -1,4 +1,4 @@
-import { normalizePrecisionCombo } from './comboFeedback.js';
+import { normalizeLandingCombo } from './comboFeedback.js';
 
 function normalizeCount(value) {
   const numericValue = Number(value);
@@ -14,7 +14,7 @@ export function normalizePerformanceRecord(record) {
   const bestPerfect = normalizeCount(record?.bestPerfect);
 
   return {
-    bestCombo: normalizePrecisionCombo(record?.bestCombo, bestPerfect),
+    bestCombo: normalizeLandingCombo(record?.bestCombo),
     bestPerfect,
     completions: normalizeCount(record?.completions),
   };
@@ -45,7 +45,7 @@ export function updateLevelPerformance(records, level, {
   const levelKey = String(Math.max(1, Math.floor(Number(level) || 1)));
   const previous = getLevelPerformance(normalizedRecords, levelKey);
   const nextPerfect = normalizeCount(perfect);
-  const nextCombo = normalizePrecisionCombo(combo, nextPerfect);
+  const nextCombo = normalizeLandingCombo(combo);
   const record = {
     bestCombo: Math.max(previous.bestCombo, nextCombo),
     bestPerfect: Math.max(previous.bestPerfect, nextPerfect),

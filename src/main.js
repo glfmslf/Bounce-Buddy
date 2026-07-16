@@ -66,9 +66,8 @@ import {
   normalizeEndlessRunHistory,
 } from './game/endlessRunHistory.js';
 import {
-  getComboBreakFeedbackText,
   getComboMilestone,
-  getNextPrecisionCombo,
+  getNextLandingCombo,
   withComboFeedback,
 } from './game/comboFeedback.js';
 import {
@@ -2483,17 +2482,13 @@ function animate() {
       const didSyncPhase = Boolean(phaseState?.active);
       const previousCombo = combo;
       const previousFocusCharge = focusCharge;
-      const comboBreakText = getComboBreakFeedbackText(
-        previousCombo,
-        isPerfectLanding
-      );
       setScore(
         score +
         1 +
         (didActivateOverload ? overloadBonusScore : 0) +
         (didSyncPhase ? phaseBonusScore : 0)
       );
-      setCombo(getNextPrecisionCombo(previousCombo, isPerfectLanding));
+      setCombo(getNextLandingCombo(previousCombo));
       setFocusCharge(getFocusChargeAfterLanding({
         charge: previousFocusCharge,
         isPerfectLanding,
@@ -2522,9 +2517,7 @@ function animate() {
         setShardCount(shardCount + 1);
       }
       const shardMessage = didCollectShard ? ' · 星尘 +1' : '';
-      const comboBreakMessage = comboBreakText
-        ? ' · ' + comboBreakText
-        : '';
+
       const focusMessage = didReadyFocus ? ' · 专注已就绪' : '';
       if (platform.type === 'wildcard') {
         setBallColor(platform.nextColor);
@@ -2549,7 +2542,7 @@ function animate() {
           : ' \u00b7 \u9519\u8fc7\u4eae\u76f8\u4f4d'
         : '';
       const landingBonusMessage =
-        shardMessage + missionMessage + comboBreakMessage + focusMessage + overloadMessage + phaseMessage;
+        shardMessage + missionMessage + focusMessage + overloadMessage + phaseMessage;
       showComboMilestone(combo, { perfect: isPerfectLanding });
       const didSpeedGoUp = updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
@@ -2592,8 +2585,6 @@ function animate() {
           feedbackEvent = 'speedUp';
         } else if (platform.type === 'wildcard') {
           feedbackEvent = 'rainbow';
-        } else if (comboBreakText) {
-          feedbackEvent = 'comboBreak';
         } else if (isPerfectLanding) {
           feedbackEvent = 'perfect';
         }

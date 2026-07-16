@@ -1,4 +1,4 @@
-import { normalizePrecisionCombo } from './comboFeedback.js';
+import { normalizeLandingCombo } from './comboFeedback.js';
 
 function normalizeCount(value) {
   const numericValue = Number(value);
@@ -23,10 +23,7 @@ export function getCareerSummary({
   levelStars = {},
 } = {}) {
   const safeLevelCount = normalizeCount(levelCount);
-  let bestCombo = normalizePrecisionCombo(
-    endlessPerformance?.bestCombo,
-    endlessPerformance?.bestPerfect
-  );
+  let bestCombo = normalizeLandingCombo(endlessPerformance?.bestCombo);
   let clearedLevels = 0;
   let masteredLevels = 0;
   let normalClears = 0;
@@ -41,7 +38,7 @@ export function getCareerSummary({
     normalClears += normalizeCount(record.completions);
     bestCombo = Math.max(
       bestCombo,
-      normalizePrecisionCombo(record.bestCombo, record.bestPerfect)
+      normalizeLandingCombo(record.bestCombo)
     );
   }
 

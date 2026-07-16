@@ -8,22 +8,15 @@ function normalizeCombo(value) {
   return Math.max(0, Math.floor(numericValue));
 }
 
-export function normalizePrecisionCombo(combo, perfect) {
-  return Math.min(normalizeCombo(combo), normalizeCombo(perfect));
+export function normalizeLandingCombo(combo, limit = Number.POSITIVE_INFINITY) {
+  const normalizedLimit = Number.isFinite(Number(limit))
+    ? normalizeCombo(limit)
+    : Number.POSITIVE_INFINITY;
+  return Math.min(normalizeCombo(combo), normalizedLimit);
 }
 
-export function getNextPrecisionCombo(combo, isPerfectLanding = false) {
-  return isPerfectLanding ? normalizeCombo(combo) + 1 : 0;
-}
-
-export function getComboBreakFeedbackText(combo, isPerfectLanding = false) {
-  const previousCombo = normalizeCombo(combo);
-
-  if (isPerfectLanding || previousCombo < 2) {
-    return '';
-  }
-
-  return previousCombo + ' \u8fde\u51fb\u4e2d\u65ad';
+export function getNextLandingCombo(combo) {
+  return normalizeCombo(combo) + 1;
 }
 
 export function getComboMilestone(value) {

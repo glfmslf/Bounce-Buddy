@@ -90,6 +90,11 @@ import {
   overloadSpeedBonus,
 } from './game/overloadPlatform.js';
 import {
+  getPhasePlatformState,
+  phaseBonusScore,
+  phaseFocusBonus,
+} from './game/phasePlatform.js';
+import {
   getCountdownDelay,
   getRunCountdownCopy,
   runCountdownSteps,
@@ -2294,6 +2299,7 @@ renderer.domElement.addEventListener('pointerup', (event) => {
 function animate() {
   timer.update();
   const delta = timer.getDelta();
+  const phaseElapsedSeconds = Date.now() / 1000;
   updateFocusAbility(delta);
   const hopTimeScale = isFocusActive ? focusTimeScale : 1;
 
@@ -2352,21 +2358,35 @@ function animate() {
       const isPerfectLanding =
         Math.abs(ballX - platform.x) < perfectLandingRadius;
       const didActivateOverload = platform.type === 'overload';
+      const phaseState = platform.type === 'phase'
+        ? getPhasePlatformState(platform, phaseElapsedSeconds)
+        : null;
+      const didSyncPhase = Boolean(phaseState?.active);
       const previousCombo = combo;
       const previousFocusCharge = focusCharge;
       const comboBreakText = getComboBreakFeedbackText(
         previousCombo,
         isPerfectLanding
       );
-      setScore(score + 1 + (didActivateOverload ? overloadBonusScore : 0));
+      setScore(
+        score +
+        1 +
+        (didActivateOverload ? overloadBonusScore : 0) +
+        (didSyncPhase ? phaseBonusScore : 0)
+      );
       setCombo(getNextPrecisionCombo(previousCombo, isPerfectLanding));
       setFocusCharge(getFocusChargeAfterLanding({
         charge: previousFocusCharge,
         isPerfectLanding,
       }));
+      const focusChargeBeforeSpecial = focusCharge;
       if (didActivateOverload && !isFocusReady(focusCharge)) {
         setFocusCharge(focusCharge + overloadFocusBonus);
       }
+      if (didSyncPhase && !isFocusReady(focusCharge)) {
+        setFocusCharge(focusCharge + phaseFocusBonus);
+      }
+      const specialFocusGain = focusCharge - focusChargeBeforeSpecial;
       updateOverloadAfterLanding(didActivateOverload);
       const didReadyFocus =
         !isFocusReady(previousFocusCharge) && isFocusReady(focusCharge);
@@ -2402,10 +2422,15 @@ function animate() {
         ? ' · 任务完成'
         : '';
       const overloadMessage = didActivateOverload
-        ? ` \u00b7 \u8d85\u8f7d +${overloadBonusScore} \u5206 \u00b7 \u4e13\u6ce8 +${overloadFocusBonus} \u00b7 ${overloadDurationLandings} \u8df3\u52a0\u901f`
+        ? ` \u00b7 \u8d85\u8f7d +${overloadBonusScore} \u5206 \u00b7 ${specialFocusGain > 0 ? `\u4e13\u6ce8 +${specialFocusGain}` : '\u4e13\u6ce8\u5df2\u6ee1'} \u00b7 ${overloadDurationLandings} \u8df3\u52a0\u901f`
+        : '';
+      const phaseMessage = platform.type === 'phase'
+        ? didSyncPhase
+          ? ` \u00b7 \u76f8\u4f4d\u540c\u6b65 +${phaseBonusScore} \u5206 \u00b7 ${specialFocusGain > 0 ? `\u4e13\u6ce8 +${specialFocusGain}` : '\u4e13\u6ce8\u5df2\u6ee1'}`
+          : ' \u00b7 \u9519\u8fc7\u4eae\u76f8\u4f4d'
         : '';
       const landingBonusMessage =
-        shardMessage + missionMessage + comboBreakMessage + focusMessage + overloadMessage;
+        shardMessage + missionMessage + comboBreakMessage + focusMessage + overloadMessage + phaseMessage;
       showComboMilestone(combo, { perfect: isPerfectLanding });
       const didSpeedGoUp = updateSpeedForScore(score);
       if (platform.type === 'wildcard') {
@@ -2440,6 +2465,8 @@ function animate() {
           feedbackEvent = 'shard';
         } else if (didActivateOverload) {
           feedbackEvent = 'overload';
+        } else if (didSyncPhase) {
+          feedbackEvent = 'phase';
         } else if (didReadyFocus) {
           feedbackEvent = 'focusReady';
         } else if (didSpeedGoUp) {
@@ -2468,6 +2495,9 @@ function animate() {
   const nextPlatforms = getLandingPlatforms(nextLandingIndex);
   const nextPlatform = findPlatformAt(nextLandingIndex, targetBallX);
   const targetWillLand = isLandingValid(nextPlatform, targetBallX);
+  const nextPhaseState = nextPlatform?.type === 'phase'
+    ? getPhasePlatformState(nextPlatform, phaseElapsedSeconds)
+    : null;
   window.__bounceBuddyDebug = {
     ballY: ball.position.y,
     ballZ: ball.position.z,
@@ -2504,13 +2534,20 @@ function animate() {
     focusRemaining,
     overloadActive: isOverloadActive(overloadState),
     overloadRemaining: overloadState.remainingLandings,
+    nextPhaseState,
     hopTimeScale,
   };
 
   targetMarker.visible = isGameRunning && !isPaused && !isLevelComplete;
   targetMarker.position.set(targetBallX, 0.13, nextPadZ);
   targetMarker.material.opacity = isGameRunning && !isPaused ? 0.68 + bounce * 0.22 : 0;
-  targetMarker.material.color.setHex(targetWillLand ? 0x91f7ff : 0xff6fa3);
+  targetMarker.material.color.setHex(
+    nextPhaseState?.active
+      ? 0xe8ff76
+      : targetWillLand
+        ? 0x91f7ff
+        : 0xff6fa3
+  );
   targetMarker.scale.setScalar(1 + bounce * 0.18);
 
   for (let i = 0; i < visibleLandingCount; i += 1) {
@@ -2542,7 +2579,10 @@ function animate() {
         platform,
         isCurrentTarget,
         isFinishLanding,
-        platform.hasShard && !collectedShardLandings.has(landingIndex)
+        platform.hasShard && !collectedShardLandings.has(landingIndex),
+        platform.type === 'phase'
+          ? getPhasePlatformState(platform, phaseElapsedSeconds)
+          : null
       );
     }
   }

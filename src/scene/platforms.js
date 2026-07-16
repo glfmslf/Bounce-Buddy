@@ -3,6 +3,7 @@ import {
   gameColors,
   lanePositions,
   overloadPad,
+  phasePad,
   perfectLandingRadius,
   visibleLandingCount,
   wildcardPad,
@@ -19,6 +20,7 @@ const precisionZoneGeometry = new THREE.RingGeometry(
 const finishRingGeometry = new THREE.RingGeometry(0.48, 0.62, 72);
 const finishLineGeometry = new THREE.BoxGeometry(1.24, 0.026, 0.08);
 const overloadRingGeometry = new THREE.RingGeometry(0.48, 0.66, 48);
+const phaseRingGeometry = new THREE.RingGeometry(0.48, 0.67, 6);
 const landingArrowShape = new THREE.Shape()
   .moveTo(0, 0.28)
   .lineTo(0.36, -0.02)
@@ -90,6 +92,14 @@ const overloadRingMaterial = new THREE.MeshBasicMaterial({
   depthWrite: false,
   side: THREE.DoubleSide,
 });
+const phaseRingMaterial = new THREE.MeshBasicMaterial({
+  color: phasePad.activeEdge,
+  transparent: true,
+  opacity: 0.72,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
 const wildcardStripeMaterials = [
   new THREE.MeshBasicMaterial({
     color: gameColors.red.emissive,
@@ -144,6 +154,7 @@ export function createLandingPads(scene) {
     const finishRing = new THREE.Mesh(finishRingGeometry, finishGoalMaterial.clone());
     const finishLine = new THREE.Mesh(finishLineGeometry, finishGoalMaterial.clone());
     const overloadRing = new THREE.Mesh(overloadRingGeometry, overloadRingMaterial.clone());
+    const phaseRing = new THREE.Mesh(phaseRingGeometry, phaseRingMaterial.clone());
     const stripes = wildcardStripeMaterials.map((material, stripeIndex) => {
       const stripe = new THREE.Mesh(wildcardStripeGeometry, material.clone());
       stripe.position.set((stripeIndex - 1) * 0.48, 0.105, 0);
@@ -166,6 +177,9 @@ export function createLandingPads(scene) {
     overloadRing.rotation.x = -Math.PI / 2;
     overloadRing.position.set(0, 0.138, 0);
     overloadRing.visible = false;
+    phaseRing.rotation.x = -Math.PI / 2;
+    phaseRing.position.set(0, 0.14, 0);
+    phaseRing.visible = false;
     pad.add(body);
     pad.add(edges);
     arrows.forEach((arrow) => pad.add(arrow));
@@ -174,6 +188,7 @@ export function createLandingPads(scene) {
     pad.add(shard);
     pad.add(finishLine);
     pad.add(overloadRing);
+    pad.add(phaseRing);
     stripes.forEach((stripe) => pad.add(stripe));
     beacons.forEach((beacon) => pad.add(beacon));
     pad.userData.body = body;
@@ -184,6 +199,7 @@ export function createLandingPads(scene) {
     pad.userData.shard = shard;
     pad.userData.finishLine = finishLine;
     pad.userData.overloadRing = overloadRing;
+    pad.userData.phaseRing = phaseRing;
     pad.userData.stripes = stripes;
     pad.userData.beacons = beacons;
     scene.add(pad);
@@ -198,7 +214,8 @@ export function applyPlatformVisual(
   platform,
   isCurrentTarget,
   isFinishLanding = false,
-  showShard = false
+  showShard = false,
+  phaseState = null
 ) {
   const bodyMaterial = pad.userData.body.material;
   const edgeMaterial = pad.userData.edges.material;
@@ -210,11 +227,13 @@ export function applyPlatformVisual(
   const stripes = pad.userData.stripes;
   const beacons = pad.userData.beacons;
   const overloadRing = pad.userData.overloadRing;
+  const phaseRing = pad.userData.phaseRing;
 
   finishRing.visible = isFinishLanding;
   finishLine.visible = isFinishLanding;
   shard.visible = showShard;
   overloadRing.visible = platform.type === 'overload';
+  phaseRing.visible = platform.type === 'phase';
   if (showShard) {
     const animationTime = performance.now() * 0.004 + shard.userData.animationOffset;
     shard.position.y = 0.72 + Math.sin(animationTime) * 0.08;
@@ -277,6 +296,41 @@ export function applyPlatformVisual(
     arrows.forEach((arrow, arrowIndex) => {
       arrow.material.color.setHex(overloadPad.emissive);
       arrow.material.opacity = isCurrentTarget ? 0.52 - arrowIndex * 0.08 : 0.34 - arrowIndex * 0.06;
+    });
+    stripes.forEach((stripe) => {
+      stripe.visible = false;
+    });
+    beacons.forEach((beacon) => {
+      beacon.visible = false;
+    });
+    return;
+  }
+
+  if (platform.type === 'phase') {
+    const phaseIntensity = phaseState?.intensity ?? 0;
+    const isPhaseActive = Boolean(phaseState?.active);
+    const emissiveColor = isPhaseActive
+      ? phasePad.activeEmissive
+      : phasePad.inactiveEmissive;
+    const edgeColor = isPhaseActive
+      ? phasePad.activeEdge
+      : phasePad.inactiveEdge;
+    bodyMaterial.color.setHex(phasePad.pad);
+    bodyMaterial.emissive.setHex(emissiveColor);
+    bodyMaterial.emissiveIntensity = 0.9 + phaseIntensity * (isCurrentTarget ? 2.1 : 1.4);
+    bodyMaterial.opacity = 0.78 + phaseIntensity * 0.18;
+    edgeMaterial.color.setHex(edgeColor);
+    edgeMaterial.opacity = 0.5 + phaseIntensity * 0.48;
+    precisionZone.material.color.setHex(edgeColor);
+    precisionZone.material.opacity = 0.18 + phaseIntensity * (isCurrentTarget ? 0.58 : 0.38);
+    precisionZone.scale.setScalar(1 + phaseIntensity * 0.12);
+    phaseRing.material.color.setHex(edgeColor);
+    phaseRing.material.opacity = 0.24 + phaseIntensity * (isPhaseActive ? 0.72 : 0.32);
+    phaseRing.rotation.z = performance.now() * (isPhaseActive ? 0.0024 : -0.0012);
+    phaseRing.scale.setScalar((0.96 + phaseIntensity * 0.16) * (isCurrentTarget ? 1.08 : 1));
+    arrows.forEach((arrow, arrowIndex) => {
+      arrow.material.color.setHex(emissiveColor);
+      arrow.material.opacity = 0.12 + phaseIntensity * (0.38 - arrowIndex * 0.06);
     });
     stripes.forEach((stripe) => {
       stripe.visible = false;

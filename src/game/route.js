@@ -19,6 +19,9 @@ const retainedRouteHistory = maxWildcardGap + 6;
 const overloadDifficultyThreshold = 0.5;
 const minOverloadGap = 3;
 const maxOverloadGap = 7;
+const phaseDifficultyThreshold = 0.75;
+const minPhaseGap = 4;
+const maxPhaseGap = 8;
 
 
 function normalizeRouteDifficulty(value) {
@@ -161,8 +164,39 @@ function shouldCreateOverloadLanding(index, routePlan) {
   return seededValue(index, 73) < overloadChance;
 }
 
-function getPlatformCount(index, shouldCreateOverload = false) {
-  if (shouldCreateOverload) {
+function getLastPhaseIndex(beforeIndex) {
+  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+    if (platformLayout.get(index)?.some((platform) => platform.type === 'phase')) {
+      return index;
+    }
+  }
+
+  return -minPhaseGap;
+}
+
+function shouldCreatePhaseLanding(index, routePlan) {
+  if (
+    routeDifficulty < phaseDifficultyThreshold ||
+    index < 4 ||
+    routePlan.shouldCreateWildcard ||
+    isShardLanding(index) ||
+    index - getLastPhaseIndex(index) < minPhaseGap
+  ) {
+    return false;
+  }
+
+  const gap = index - getLastPhaseIndex(index);
+
+  if (gap >= maxPhaseGap) {
+    return true;
+  }
+
+  const phaseChance = 0.18 + (routeDifficulty - phaseDifficultyThreshold) * 0.56;
+  return seededValue(index, 89) < phaseChance;
+}
+
+function getPlatformCount(index, shouldCreateSpecial = false) {
+  if (shouldCreateSpecial) {
     return maxPlatformsPerLanding;
   }
   const distractorChance = 0.34 + routeDifficulty * 0.34;
@@ -189,8 +223,9 @@ function createLandingPlatforms(index, routePlan) {
 
   const requiredColor = routePlan.color;
   const shouldCreateWildcard = routePlan.shouldCreateWildcard;
-  const shouldCreateOverload = shouldCreateOverloadLanding(index, routePlan);
-  const platformCount = getPlatformCount(index, shouldCreateOverload);
+  const shouldCreatePhase = shouldCreatePhaseLanding(index, routePlan);
+  const shouldCreateOverload = !shouldCreatePhase && shouldCreateOverloadLanding(index, routePlan);
+  const platformCount = getPlatformCount(index, shouldCreatePhase || shouldCreateOverload);
   const routeLaneIndex = routePlan.laneIndex;
   const lanes = [routeLaneIndex];
 
@@ -231,25 +266,39 @@ function createLandingPlatforms(index, routePlan) {
       };
     }
 
-    const isOverloadPlatform = shouldCreateOverload && platformIndex === 1;
-    const color = laneIndex === routeLaneIndex || isOverloadPlatform
+    const isSpecialPlatform = platformIndex === 1 && (shouldCreatePhase || shouldCreateOverload);
+    const color = laneIndex === routeLaneIndex || isSpecialPlatform
       ? requiredColor
       : getNextColor(requiredColor, index + laneIndex);
 
     return {
       x,
       hasShard: platformIndex === 0 && isShardLanding(index),
-      type: isOverloadPlatform ? 'overload' : 'normal',
+      type: isSpecialPlatform
+        ? (shouldCreatePhase ? 'phase' : 'overload')
+        : 'normal',
       color,
       nextColor: null,
+      phaseOffset: shouldCreatePhase && isSpecialPlatform
+        ? seededValue(index, 97)
+        : undefined,
     };
   });
 }
 
 function getNextRouteLane(index, previousLaneIndex) {
+  const previousColor = routePlans.get(index - 1)?.color;
+  const previousValidLaneIndexes = (platformLayout.get(index - 1) ?? [])
+    .filter((platform) => platform.type === 'wildcard' || platform.color === previousColor)
+    .map((platform) => lanePositions.indexOf(platform.x));
   const candidates = lanePositions
     .map((_, laneIndex) => laneIndex)
-    .filter((laneIndex) => Math.abs(laneIndex - previousLaneIndex) <= 1)
+    .filter((laneIndex) => (
+      Math.abs(laneIndex - previousLaneIndex) <= 1 &&
+      previousValidLaneIndexes.every(
+        (validLaneIndex) => Math.abs(laneIndex - validLaneIndex) <= 1
+      )
+    ))
     .map((laneIndex) => {
       const recentLanes = [1, 2, 3, 4]
         .map((offset) => routePlans.get(index - offset)?.laneIndex)
@@ -385,6 +434,10 @@ export function getRouteCacheStats() {
       (count, platforms) => count + platforms.filter((platform) => platform.type === 'overload').length,
       0
     ),
+    phasePlatforms: Array.from(platformLayout.values()).reduce(
+      (count, platforms) => count + platforms.filter((platform) => platform.type === 'phase').length,
+      0
+    ),
     platformLayouts: platformLayout.size,
     routePlans: routePlans.size,
   };
@@ -466,6 +519,7 @@ export function getRouteSample(stepCount = 16) {
       type: reachablePlatform.type,
       nextColor: reachablePlatform.nextColor,
       overloadAvailable: platforms.some((platform) => platform.type === 'overload'),
+      phaseAvailable: platforms.some((platform) => platform.type === 'phase'),
       platformCount: platforms.length,
     });
 

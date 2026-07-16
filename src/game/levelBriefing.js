@@ -26,9 +26,11 @@ export function getLevelBriefing({
   const record = normalizePerformanceRecord(performance);
   const thresholds = getStarThresholds(length);
   const speed = Math.max(1, Math.floor(Number(baseSpeed) || 1));
-  const routeModifier = intensity >= 3
-    ? '\u00b7 \u542b\u8d85\u8f7d\u9009\u9879'
-    : '\u00b7 \u56fa\u5b9a\u8def\u7ebf';
+  const routeModifier = intensity >= 4
+    ? '\u00b7 \u542b\u8d85\u8f7d/\u76f8\u4f4d\u9009\u9879'
+    : intensity >= 3
+      ? '\u00b7 \u542b\u8d85\u8f7d\u9009\u9879'
+      : '\u00b7 \u56fa\u5b9a\u8def\u7ebf';
 
   let actionLabel = '\u5f00\u59cb\u6311\u6218';
 

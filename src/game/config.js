@@ -81,3 +81,12 @@ export const overloadPad = {
   emissive: 0xff3fc8,
   edge: 0xffef9a,
 };
+
+export const phasePad = {
+  label: '\u76f8\u4f4d',
+  pad: 0x122b4c,
+  activeEmissive: 0x61f7ff,
+  activeEdge: 0xe8ff76,
+  inactiveEmissive: 0x796dff,
+  inactiveEdge: 0x9b91ff,
+};
